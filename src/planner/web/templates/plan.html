@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Планы{% endblock %}
+{% block body %}
+<h1>Проекты</h1>
+{% if projects %}
+<table>
+  <thead><tr><th>Проект</th><th>Статус</th><th>Дедлайн</th></tr></thead>
+  <tbody>
+  {% for p in projects %}
+    <tr>
+      <td><a href="/plan/{{ p.id }}">{{ p.title }}</a></td>
+      <td>{{ p.status }}</td>
+      <td>{{ p.deadline or "—" }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>Пока нет проектов.</p>
+{% endif %}
+{% endblock %}

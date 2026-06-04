@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Команда{% endblock %}
+{% block body %}
+<h1>Команда</h1>
+<table>
+  <thead><tr><th>Имя</th></tr></thead>
+  <tbody>
+  {% for person in people %}
+    <tr><td>{{ person.name }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% if user.is_admin %}
+<h2>Добавить отпуск</h2>
+<form method="post" action="/team/vacation">
+  <input name="person_name" placeholder="Имя" required>
+  <input name="day_from" type="date" required>
+  <input name="day_to" type="date" required>
+  <input name="capacity_h" type="number" value="0" min="0" max="8">
+  <button type="submit">Сохранить</button>
+</form>
+{% endif %}
+{% endblock %}

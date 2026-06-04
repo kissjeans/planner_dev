@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     webhook_secret: str = ""
     """Secret for webhook validation (optional)"""
 
+    jwt_secret: str = "dev-insecure-change-me"
+    """Secret used to sign admin-session JWTs (spec section 9.2)."""
+
     # App
     timezone: str = "Europe/Moscow"
     """Application timezone"""

@@ -28,6 +28,23 @@ class PlanVersionRecord:
     payload: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class ProjectRecord:
+    id: UUID
+    title: str
+    status: str
+    deadline: date | None = None
+
+
+@dataclass(frozen=True)
+class AuditRecord:
+    created_at: str
+    action: str
+    entity_type: str
+    actor_name: str | None = None
+    payload: dict[str, Any] | None = None
+
+
 class RepoPort(Protocol):
     async def get_person_by_name(self, name: str) -> PersonRecord | None: ...
 
@@ -52,4 +69,18 @@ class RepoPort(Protocol):
         entity_type: str,
         entity_id: UUID | None,
         payload: dict[str, Any] | None,
+    ) -> None: ...
+
+    # --- Read side, consumed by the web admin (spec section 9) ---
+
+    async def list_projects(self) -> list[ProjectRecord]: ...
+
+    async def list_people(self) -> list[PersonRecord]: ...
+
+    async def list_audit(self, limit: int = 50, offset: int = 0) -> list[AuditRecord]: ...
+
+    async def get_person_by_tg_id(self, tg_user_id: int) -> PersonRecord | None: ...
+
+    async def update_task_schedule(
+        self, task_id: UUID, start: date | None, end: date | None, person_id: UUID | None
     ) -> None: ...

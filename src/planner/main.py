@@ -1,0 +1,61 @@
+"""Single-process entrypoint (spec section 9.3 / 5.7).
+
+Runs the aiogram bot, the FastAPI admin, and the APScheduler jobs in one
+asyncio event loop — one process, one DB writer (spec section 17).
+"""
+
+from __future__ import annotations
+
+import asyncio
+
+import uvicorn
+from aiogram import Bot
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+from planner.bot.runner import build_dispatcher, build_parser
+from planner.infra.db.base import create_engine, create_session_factory
+from planner.infra.db.repo import SqlAlchemyRepo
+from planner.infra.calendar.snapshot import SnapshotCalendar  # noqa: F401 (cron target)
+from planner.infra.scheduler import SchedulerDeps, register_jobs
+from planner.settings import get_settings
+from planner.web.app import create_app
+
+
+async def main() -> None:
+    settings = get_settings()
+
+    engine = create_engine(settings.database_url)
+    session_factory = create_session_factory(engine)
+    repo = SqlAlchemyRepo(session_factory)
+
+    bot = Bot(token=settings.bot_token)
+    dp = build_dispatcher(settings, build_parser(settings))
+
+    app = create_app(repo, settings)
+    server = uvicorn.Server(
+        uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="info")
+    )
+
+    scheduler = AsyncIOScheduler()
+
+    async def _daily_summary() -> None:
+        await bot.send_message(settings.team_chat_id, "Дневная сводка нагрузки.")
+
+    async def _refresh_calendar() -> None:  # snapshot refresh hook (spec 11)
+        return None
+
+    register_jobs(
+        scheduler,
+        SchedulerDeps(
+            send_daily_summary=_daily_summary,
+            refresh_calendar_snapshot=_refresh_calendar,
+            timezone=settings.timezone,
+        ),
+    )
+    scheduler.start()
+
+    await asyncio.gather(dp.start_polling(bot), server.serve())
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
