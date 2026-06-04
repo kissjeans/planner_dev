@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     team_chat_id: int
     """Telegram chat ID for team notifications"""
 
+    admin_ids: str = ""
+    """Comma-separated Telegram user IDs allowed to mutate plans (spec section 16)."""
+
     # LLM
     anthropic_api_key: str
     """Anthropic API key for Claude models"""
@@ -38,6 +41,10 @@ class Settings(BaseSettings):
 
     debug: bool = False
     """Debug mode flag"""
+
+    @property
+    def admin_id_set(self) -> set[int]:
+        return {int(x) for x in self.admin_ids.split(",") if x.strip()}
 
 
 def get_settings() -> Settings:

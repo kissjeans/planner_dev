@@ -1,0 +1,82 @@
+"""Intent schema (spec section 6.1).
+
+The LLM (or the regex fallback) maps a free-text / voice message to exactly
+one of these Pydantic models. ``Intent`` is a discriminated union on ``kind``,
+which lets ``instructor`` and the bot router branch without isinstance soup.
+"""
+
+from __future__ import annotations
+
+from datetime import date
+from typing import Annotated, Literal
+from uuid import UUID
+
+from pydantic import BaseModel, Field
+
+
+class AddProjectIntent(BaseModel):
+    kind: Literal["add_project"] = "add_project"
+    title: str
+    template_code: Literal["standard", "lite"]
+    deadline: date | None = None  # None => backward / critical-path mode
+    brief_return_date: date | None = None
+    notes: str | None = None
+
+
+class LoadIntent(BaseModel):
+    kind: Literal["load"] = "load"
+    person_name: str | None = None  # None => whole team
+    date_range: tuple[date, date] | None = None  # None => next 14 days
+
+
+class WhatIfIntent(BaseModel):
+    kind: Literal["what_if"] = "what_if"
+    operation: Literal[
+        "shift_deadline", "add_person", "switch_to_lite", "drop_project"
+    ]
+    project_title: str | None = None
+    new_deadline: date | None = None
+    person_name: str | None = None
+
+
+class VacationIntent(BaseModel):
+    kind: Literal["vacation"] = "vacation"
+    person_name: str
+    day_from: date
+    day_to: date
+    capacity_h: int = 0  # 0 => full day off
+
+
+class ConfirmIntent(BaseModel):
+    kind: Literal["confirm"] = "confirm"
+    plan_version_id: UUID | None = None  # None => latest proposed by context
+
+
+class AssignIntent(BaseModel):
+    kind: Literal["assign"] = "assign"
+    task_ref: str  # e.g. "task 13 in project X"
+    person_name: str
+
+
+class ClarifyIntent(BaseModel):
+    """Emitted when confidence is low — the bot asks a follow-up (flow step 8)."""
+
+    kind: Literal["clarify"] = "clarify"
+    question: str | None = None
+
+
+Intent = Annotated[
+    AddProjectIntent
+    | LoadIntent
+    | WhatIfIntent
+    | VacationIntent
+    | ConfirmIntent
+    | AssignIntent
+    | ClarifyIntent,
+    Field(discriminator="kind"),
+]
+
+# Intents that mutate state — gated to admins by the permissions middleware.
+WRITE_KINDS = frozenset(
+    {"add_project", "what_if", "vacation", "confirm", "assign"}
+)
