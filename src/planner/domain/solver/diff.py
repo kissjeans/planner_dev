@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import date
+from uuid import UUID
+
 from planner.domain.models import PlanDiff, PlanResult, RiskFlag
 
 
-def _overload_keys(plan: PlanResult) -> set:
+def _overload_keys(plan: PlanResult) -> set[tuple[UUID | None, date | None]]:
     return {(r.person_id, r.day) for r in plan.overloads()}
 
 

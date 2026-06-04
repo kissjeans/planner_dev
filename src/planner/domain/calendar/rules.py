@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from planner.domain.calendar.ports import WorkingCalendar
+
 _WEEKEND = frozenset({5, 6})  # Saturday, Sunday
 
 
@@ -35,14 +37,14 @@ class WeekendCalendar:
         return n
 
 
-def first_working_day(cal: WeekendCalendar, start: date) -> date:
+def first_working_day(cal: WorkingCalendar, start: date) -> date:
     """Return ``start`` if it is a working day, else the next working day."""
     if cal.is_working_day(start):
         return start
     return cal.next_working_day(start)
 
 
-def nth_working_day(cal: WeekendCalendar, start: date, n: int) -> date:
+def nth_working_day(cal: WorkingCalendar, start: date, n: int) -> date:
     """Return the ``n``-th working day on/after ``start`` (1-indexed).
 
     ``n == 1`` yields :func:`first_working_day`.

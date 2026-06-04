@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import PlainTextResponse
 from fastapi.templating import Jinja2Templates
 
+from planner.app.confirm_plan import PlanNotFoundError, PlanNotProposedError
+from planner.app.errors import user_message
 from planner.app.ports import RepoPort
+from planner.app.set_vacation import PersonNotFoundError
 from planner.settings import Settings
 from planner.web.routes import audit, auth, plan, team
 
@@ -26,4 +30,18 @@ def create_app(repo: RepoPort, settings: Settings) -> FastAPI:
     app.include_router(plan.router)
     app.include_router(team.router)
     app.include_router(audit.router)
+
+    @app.exception_handler(PermissionError)
+    async def _forbidden(_request: Request, exc: PermissionError) -> PlainTextResponse:
+        return PlainTextResponse(user_message(exc), status_code=403)
+
+    @app.exception_handler(PlanNotFoundError)
+    @app.exception_handler(PersonNotFoundError)
+    async def _not_found(_request: Request, exc: Exception) -> PlainTextResponse:
+        return PlainTextResponse(user_message(exc), status_code=404)
+
+    @app.exception_handler(PlanNotProposedError)
+    async def _conflict(_request: Request, exc: Exception) -> PlainTextResponse:
+        return PlainTextResponse(user_message(exc), status_code=409)
+
     return app

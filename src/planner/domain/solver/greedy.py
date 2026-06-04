@@ -197,10 +197,12 @@ class GreedySolver:
         for t in req.tasks:
             if t.status == "done" and t.fixed_start and t.fixed_assignee_id:
                 end = t.fixed_end or t.fixed_start
-                allocs = (DayAllocation(t.fixed_assignee_id, t.fixed_start, t.duration_hours),)
-                idx.occupy(allocs)
+                fixed_allocs: tuple[DayAllocation, ...] = (
+                    DayAllocation(t.fixed_assignee_id, t.fixed_start, t.duration_hours),
+                )
+                idx.occupy(fixed_allocs)
                 assignments[t.id] = Assignment(
-                    t.id, t.fixed_assignee_id, t.fixed_start, end, allocs
+                    t.id, t.fixed_assignee_id, t.fixed_start, end, fixed_allocs
                 )
 
         for tid in order:

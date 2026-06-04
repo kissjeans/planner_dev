@@ -6,6 +6,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.redis import RedisStorage
 
 from planner.bot.handlers import confirm, load, start, task_router, whatif
+from planner.bot.middlewares.errors import ErrorBoundaryMiddleware
 from planner.bot.middlewares.permissions import ActorMiddleware
 from planner.infra.llm.basic import BasicIntentParser
 from planner.infra.llm.ports import IntentParserPort
@@ -25,6 +26,10 @@ def build_dispatcher(settings: Settings, parser: IntentParserPort) -> Dispatcher
     storage = RedisStorage.from_url(settings.redis_url)
     dp = Dispatcher(storage=storage)
     dp["parser"] = parser
+
+    errors_mw = ErrorBoundaryMiddleware()
+    dp.message.middleware(errors_mw)
+    dp.callback_query.middleware(errors_mw)
 
     actor_mw = ActorMiddleware(settings.admin_id_set)
     dp.message.middleware(actor_mw)

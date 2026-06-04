@@ -11,12 +11,14 @@ from datetime import date
 
 import networkx as nx
 
+from uuid import UUID
+
 from planner.domain.calendar.ports import WorkingCalendar
 from planner.domain.calendar.rules import first_working_day, nth_working_day
-from planner.domain.models import PlanRequest, Task
+from planner.domain.models import PlanRequest, Person, Task
 
 
-def _duration_days(task: Task, people_by_id: dict) -> int:
+def _duration_days(task: Task, people_by_id: dict[UUID, Person]) -> int:
     caps = [
         people_by_id[pid].capacity_h
         for pid in task.allowed_person_ids
@@ -36,10 +38,10 @@ def critical_path_end(
     for d in req.dependencies:
         g.add_edge(d.depends_on_id, d.task_id)
 
-    people_by_id: dict = {p.id: p for p in req.people}
-    tasks_by_id: dict = {t.id: t for t in req.tasks}
+    people_by_id: dict[UUID, Person] = {p.id: p for p in req.people}
+    tasks_by_id: dict[UUID, Task] = {t.id: t for t in req.tasks}
 
-    ef_days: dict = {}
+    ef_days: dict[UUID, int] = {}
     max_ef = 0
     for tid in nx.topological_sort(g):
         dd = _duration_days(tasks_by_id[tid], people_by_id)
