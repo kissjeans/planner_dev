@@ -1,0 +1,42 @@
+people:
+  - name: "Андрей"
+    role_label: "Менеджер проекта"
+    capacity_h: 8
+    is_admin: true
+    is_active: true
+    is_external: false
+
+  - name: "Рай"
+    role_label: "Менеджер по продажам"
+    capacity_h: 8
+    is_admin: false
+    is_active: true
+    is_external: false
+
+  - name: "Айгуль"
+    role_label: "Аналитик"
+    capacity_h: 8
+    is_admin: false
+    is_active: true
+    is_external: false
+
+  - name: "Лёша"
+    role_label: "Копирайтер"
+    capacity_h: 8
+    is_admin: false
+    is_active: true
+    is_external: false
+
+  - name: "Катя"
+    role_label: "Дизайнер"
+    capacity_h: 8
+    is_admin: false
+    is_active: true
+    is_external: true
+
+  - name: "Дима"
+    role_label: "Технический специалист"
+    capacity_h: 8
+    is_admin: false
+    is_active: true
+    is_external: false

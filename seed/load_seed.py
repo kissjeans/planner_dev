@@ -1,0 +1,177 @@
+"""
+CLI: python -m seed.load_seed
+
+Loads seed data into the database. Idempotent — uses upsert on unique keys.
+"""
+
+import asyncio
+import os
+import sys
+from pathlib import Path
+
+import yaml
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from planner.infra.db.base import create_engine, create_session_factory
+from planner.infra.db.models import (
+    Person,
+    Template,
+    TemplateDependency,
+    TemplateTask,
+    TemplateTaskAssignee,
+)
+
+SEED_DIR = Path(__file__).parent
+
+
+async def load_team(session: AsyncSession) -> dict[str, object]:
+    """Load people from team.yaml. Returns {name: Person} map.
+
+    Idempotent: inserts only if name not already present.
+    """
+    raw = yaml.safe_load((SEED_DIR / "team.yaml").read_text())
+
+    result = await session.execute(select(Person))
+    existing: dict[str, Person] = {p.name: p for p in result.scalars().all()}
+
+    for entry in raw["people"]:
+        name = entry["name"]
+        if name in existing:
+            continue
+        person = Person(
+            name=name,
+            role_label=entry.get("role_label"),
+            capacity_h=entry.get("capacity_h", 8),
+            is_admin=entry.get("is_admin", False),
+            is_active=entry.get("is_active", True),
+            is_external=entry.get("is_external", False),
+        )
+        session.add(person)
+        existing[name] = person
+
+    await session.flush()
+    return existing
+
+
+async def load_template(
+    session: AsyncSession,
+    code: str,
+    name: str,
+    tasks_yaml: Path,
+    people_map: dict[str, object],
+) -> None:
+    """Load a template and its tasks from YAML. Idempotent by template code."""
+    raw = yaml.safe_load(tasks_yaml.read_text())
+
+    # Upsert template row
+    result = await session.execute(select(Template).where(Template.code == code))
+    template: Template | None = result.scalar_one_or_none()
+    if template is None:
+        template = Template(code=code, name=name)
+        session.add(template)
+        await session.flush()
+    else:
+        template.name = name
+
+    # Drop existing child rows so re-run is clean
+    existing_task_ids = (
+        await session.execute(
+            select(TemplateTask.id).where(TemplateTask.template_id == template.id)
+        )
+    ).scalars().all()
+
+    if existing_task_ids:
+        await session.execute(
+            delete(TemplateDependency).where(
+                TemplateDependency.template_task_id.in_(existing_task_ids)
+            )
+        )
+        await session.execute(
+            delete(TemplateTaskAssignee).where(
+                TemplateTaskAssignee.template_task_id.in_(existing_task_ids)
+            )
+        )
+        await session.execute(
+            delete(TemplateTask).where(TemplateTask.template_id == template.id)
+        )
+
+    # Insert tasks
+    ord_to_task: dict[int, TemplateTask] = {}
+    for entry in raw["tasks"]:
+        task = TemplateTask(
+            template_id=template.id,
+            ord=entry["ord"],
+            name=entry["name"],
+            duration_hours=entry["duration_hours"],
+            is_splittable=entry.get("is_splittable", False),
+            allow_two_assignees=entry.get("allow_two_assignees", False),
+            optional_in_lite=entry.get("optional_in_lite", False),
+        )
+        session.add(task)
+        ord_to_task[entry["ord"]] = task
+
+    await session.flush()
+
+    # Insert assignees and dependencies
+    for entry in raw["tasks"]:
+        task = ord_to_task[entry["ord"]]
+
+        for asgn in entry.get("assignees", []):
+            person = people_map.get(asgn["name"])
+            if person is None:
+                raise ValueError(f"Unknown assignee '{asgn['name']}' in {tasks_yaml.name}")
+            session.add(
+                TemplateTaskAssignee(
+                    template_task_id=task.id,
+                    person_id=person.id,
+                    strictness=asgn["strictness"],
+                )
+            )
+
+        for dep_ord in entry.get("depends_on", []):
+            dep_task = ord_to_task.get(dep_ord)
+            if dep_task is None:
+                raise ValueError(
+                    f"Task ord={entry['ord']} references unknown dep ord={dep_ord}"
+                )
+            session.add(
+                TemplateDependency(
+                    template_task_id=task.id,
+                    depends_on_id=dep_task.id,
+                    link_type="FS",
+                )
+            )
+
+    await session.flush()
+
+
+async def main() -> None:
+    database_url = os.environ.get(
+        "DATABASE_URL",
+        "postgresql+asyncpg://planner:planner@localhost:5432/planner",
+    )
+    engine = create_engine(database_url)
+    session_factory = create_session_factory(engine)
+
+    async with session_factory() as session:
+        async with session.begin():
+            people_map = await load_team(session)
+            await load_template(
+                session, "standard", "Стандартный шаблон",
+                SEED_DIR / "tasks_standard.yaml", people_map,
+            )
+            await load_template(
+                session, "lite", "Лайт шаблон",
+                SEED_DIR / "tasks_lite.yaml", people_map,
+            )
+
+    await engine.dispose()
+    print("Seed loaded successfully.")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

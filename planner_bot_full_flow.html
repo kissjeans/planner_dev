@@ -1,0 +1,166 @@
+<style>
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.pf{max-width:640px;margin:0 auto;font-size:14px;padding:8px 0}
+.lg{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.ph{font-size:12px;font-weight:500;color:var(--color-text-tertiary);margin:16px 0 8px 2px}
+.nd{display:flex;gap:10px;align-items:flex-start;background:var(--color-background-secondary);border:1px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);padding:10px 12px;cursor:pointer;transition:border-color .15s}
+.nd:hover{border-color:var(--color-border-secondary)}
+.st{width:4px;align-self:stretch;border-radius:2px;flex:0 0 4px}
+.bd{flex:1;min-width:0}
+.hr{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px}
+.nm{font-size:12px;color:var(--color-text-tertiary)}
+.tt{font-size:15px;font-weight:500;color:var(--color-text-primary)}
+.ds{font-size:13px;color:var(--color-text-secondary);line-height:1.5}
+.bg{font-size:11px;font-weight:500;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.cn{text-align:center;color:var(--color-border-secondary);height:18px;line-height:18px;font-size:16px}
+.br{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.ch{font-size:11.5px;font-weight:500;padding:3px 9px;border-radius:8px}
+.yes{background:#EAF3DE;color:#27500A}
+.lp{border:1px dashed var(--color-border-secondary);color:var(--color-text-secondary);background:transparent}
+</style>
+<h2 class="sr-only">Полный флоу бота planner: от сообщения руководителя через транскрипцию, разбор ИИ-агентом, формирование задач, распределение по ролям и солвер, до цикла подтверждения и записи в базу.</h2>
+<div class="pf">
+
+<div class="lg">
+<span class="bg" style="background:#FAECE7;color:#712B13">Человек</span>
+<span class="bg" style="background:#F1EFE8;color:#444441">Telegram</span>
+<span class="bg" style="background:#FAEEDA;color:#633806">Распознавание</span>
+<span class="bg" style="background:#EEEDFE;color:#3C3489">ИИ-агент</span>
+<span class="bg" style="background:#E1F5EE;color:#085041">Солвер</span>
+<span class="bg" style="background:#E6F1FB;color:#0C447C">База данных</span>
+</div>
+
+<div class="ph">Вход</div>
+
+<div class="nd" onclick="sendPrompt('Подробнее про шаг 1: запуск через /task или упоминание и почему бот не читает весь чат')">
+<div class="st" style="background:#D85A30"></div><div class="bd">
+<div class="hr"><span class="nm">1</span><span class="tt">Запуск</span><span class="bg" style="background:#FAECE7;color:#712B13">Человек</span></div>
+<div class="ds">Руководитель пишет /task или @упоминание; задача текстом или голосовым, реплаем боту. Весь чат бот не читает (privacy mode).</div>
+</div></div>
+<div class="cn"><i class="ti ti-chevron-down"></i></div>
+
+<div class="nd" onclick="sendPrompt('Подробнее про шаг 2: как Telegram доставляет апдейт боту, long polling против webhook')">
+<div class="st" style="background:#888780"></div><div class="bd">
+<div class="hr"><span class="nm">2</span><span class="tt">Доставка апдейта</span><span class="bg" style="background:#F1EFE8;color:#444441">Telegram</span></div>
+<div class="ds">Telegram сам шлёт сообщение боту (long polling или webhook). Бот не «слушает» — он спит между событиями.</div>
+</div></div>
+<div class="cn"><i class="ti ti-chevron-down"></i></div>
+
+<div class="nd" onclick="sendPrompt('Подробнее про шаг 3: развилка по формату входа — голос или текст')">
+<div class="st" style="background:#888780"></div><div class="bd">
+<div class="hr"><span class="nm">3</span><span class="tt">Формат входа?</span><span class="bg" style="background:#F1EFE8;color:#444441">Telegram</span></div>
+<div class="ds">Развилка: голос идёт на транскрипцию, текст или кнопка — сразу к агенту.</div>
+<div class="br"><span class="ch yes">голос → шаг 4</span><span class="ch yes">текст / кнопка → шаг 5</span></div>
+</div></div>
+<div class="cn"><i class="ti ti-chevron-down"></i></div>
+
+<div class="nd" onclick="sendPrompt('Подробнее про шаг 4: транскрипция голоса в текст, какая модель STT')">
+<div class="st" style="background:#BA7517"></div><div class="bd">
+<div class="hr"><span class="nm">4</span><span class="tt">Транскрипция</span><span class="bg" style="background:#FAEEDA;color:#633806">Распознавание</span></div>
+<div class="ds">Голос → текст отдельной ML-моделью (напр. Whisper). Без неё голосовое не обработать.</div>
+</div></div>
+<div class="cn"><i class="ti ti-chevron-down"></i></div>
+
+<div class="ph">Понимание — ИИ-агент</div>
+
+<div class="nd" onclick="sendPrompt('Подробнее про шаг 5: определение интента агентом')">
+<div class="st" style="background:#534AB7"></div><div class="bd">
+<div class="hr"><span class="nm">5</span><span class="tt">Определение интента</span><span class="bg" style="background:#EEEDFE;color:#3C3489">ИИ-агент</span></div>
+<div class="ds">Что это: добавить задачу/проект, запрос загрузки, что-если, отпуск или подтверждение.</div>
+</div></div>
+<div class="cn"><i class="ti ti-chevron-down"></i></div>
+
+<div class="nd" onclick="sendPrompt('Подробнее про шаг 6: анализ, сегментация и разрешение ссылок (имена, даты, проект)')">
+<div class="st" style="background:#534AB7"></div><div class="bd">
+<div class="hr"><span class="nm">6</span><span class="tt">Анализ и сегментация</span><span class="bg" style="background:#EEEDFE;color:#3C3489">ИИ-агент</span></div>
+<div class="ds">Разбить на задачи; вытащить что, для кого, дедлайн, проект, зависимости; разрешить ссылки («Лёху» → Лёша, «к среде» → дата, «тот проект» → из истории).</div>
+</div></div>
+<div class="cn"><i class="ti ti-chevron-down"></i></div>
+
+<div class="nd" onclick="sendPrompt('Подробнее про шаг 7: сборка по строгой схеме и валидация сущностей')">
+<div class="st" style="background:#534AB7"></div><div class="bd">
+<div class="hr"><span class="nm">7</span><span class="tt">Сборка по схеме + валидация</span><span class="bg" style="background:#EEEDFE;color:#3C3489">ИИ-агент</span></div>
+<div class="ds">Заполнить строгий JSON; проверить известный человек / шаблон / рабочая дата. Поля из шаблона и привязок помечаются «выведено», а не «подтверждено».</div>
+</div></div>
+<div class="cn"><i class="ti ti-chevron-down"></i></div>
+
+<div class="nd" onclick="sendPrompt('Подробнее про шаг 8: петля уточнения, когда данных не хватает')">
+<div class="st" style="background:#534AB7"></div><div class="bd">
+<div class="hr"><span class="nm">8</span><span class="tt">Данных хватает?</span><span class="bg" style="background:#EEEDFE;color:#3C3489">ИИ-агент</span></div>
+<div class="ds">Если поля нет или уверенность низкая — агент не угадывает, а переспрашивает (или даёт кнопки).</div>
+<div class="br"><span class="ch yes">да → шаг 9</span><span class="ch lp">↺ нет → к шагу 6 (петля уточнения)</span></div>
+</div></div>
+<div class="cn"><i class="ti ti-chevron-down"></i></div>
+
+<div class="ph">Планирование</div>
+
+<div class="nd" onclick="sendPrompt('Подробнее про шаг 9: формирование задач из шаблона standard или lite')">
+<div class="st" style="background:#534AB7"></div><div class="bd">
+<div class="hr"><span class="nm">9</span><span class="tt">Формирование задач</span><span class="bg" style="background:#EEEDFE;color:#3C3489">ИИ-агент</span></div>
+<div class="ds">Шаблон standard / lite → набор задач с длительностью Y, зависимостями и флагами «дробится / можно двоим». Задачи не выдумываются из текста.</div>
+</div></div>
+<div class="cn"><i class="ti ti-chevron-down"></i></div>
+
+<div class="nd" onclick="sendPrompt('Подробнее про шаг 10: кандидаты на роли и степени строгости А Б В')">
+<div class="st" style="background:#534AB7"></div><div class="bd">
+<div class="hr"><span class="nm">10</span><span class="tt">Кандидаты на роли</span><span class="bg" style="background:#EEEDFE;color:#3C3489">ИИ-агент</span></div>
+<div class="ds">Привязка «задача → допустимые исполнители» со строгостью: А — один конкретный, Б — один-два, В — трое с контролем.</div>
+</div></div>
+<div class="cn"><i class="ti ti-chevron-down"></i></div>
+
+<div class="nd" onclick="sendPrompt('Подробнее про шаг 11: как солвер расставляет задачи, жёсткие и мягкие ограничения')">
+<div class="st" style="background:#0F6E56"></div><div class="bd">
+<div class="hr"><span class="nm">11</span><span class="tt">Расстановка</span><span class="bg" style="background:#E1F5EE;color:#085041">Солвер</span></div>
+<div class="ds">Топосорт → ранний слот. Жёсткие: привязка, capacity, жёсткие зависимости, дедлайны, отпуска. Мягкие: баланс, перегрузы, приоритет, переключения. Режим вперёд / назад.</div>
+</div></div>
+<div class="cn"><i class="ti ti-chevron-down"></i></div>
+
+<div class="nd" onclick="sendPrompt('Подробнее про шаг 12: недостижимый дедлайн и рычаги')">
+<div class="st" style="background:#0F6E56"></div><div class="bd">
+<div class="hr"><span class="nm">12</span><span class="tt">Успеваем к дедлайну?</span><span class="bg" style="background:#E1F5EE;color:#085041">Солвер</span></div>
+<div class="ds">Перегруз — мягкий сигнал, план сам не перекраивается. Недостижимый срок — не молчим, а помечаем риск.</div>
+<div class="br"><span class="ch yes">да → шаг 13</span><span class="ch lp">↺ нет → рычаги: lite, сдвиг, +человек, перенос проекта</span></div>
+</div></div>
+<div class="cn"><i class="ti ti-chevron-down"></i></div>
+
+<div class="ph">Согласование</div>
+
+<div class="nd" onclick="sendPrompt('Подробнее про шаг 13: объяснение результата и дифф для что-если')">
+<div class="st" style="background:#534AB7"></div><div class="bd">
+<div class="hr"><span class="nm">13</span><span class="tt">Объяснение руководителю</span><span class="bg" style="background:#EEEDFE;color:#3C3489">ИИ-агент</span></div>
+<div class="ds">План: кто / что / когда, перегрузы подсвечены. Для что-если — дифф («сдвинет 5 задач»). Источник правды пока не тронут.</div>
+</div></div>
+<div class="cn"><i class="ti ti-chevron-down"></i></div>
+
+<div class="nd" onclick="sendPrompt('Подробнее про шаг 14: цикл правок и как правки копятся в пакет')">
+<div class="st" style="background:#D85A30"></div><div class="bd">
+<div class="hr"><span class="nm">14</span><span class="tt">Ок или правка?</span><span class="bg" style="background:#FAECE7;color:#712B13">Человек</span></div>
+<div class="ds">План предложенный, не зафиксированный. Бот ждёт решения руководителя.</div>
+<div class="br"><span class="ch yes">«ок» → шаг 15</span><span class="ch lp">↺ правка текстом/голосом → к шагу 6 (копится в пакет)</span></div>
+</div></div>
+<div class="cn"><i class="ti ti-chevron-down"></i></div>
+
+<div class="ph">Запись</div>
+
+<div class="nd" onclick="sendPrompt('Подробнее про шаг 15: гейт прав, кто может коммитить')">
+<div class="st" style="background:#D85A30"></div><div class="bd">
+<div class="hr"><span class="nm">15</span><span class="tt">Гейт прав</span><span class="bg" style="background:#FAECE7;color:#712B13">Человек</span></div>
+<div class="ds">Коммит и replan — только менеджер/админ. Чтение, запрос загрузки и что-если — всем участникам.</div>
+</div></div>
+<div class="cn"><i class="ti ti-chevron-down"></i></div>
+
+<div class="nd" onclick="sendPrompt('Подробнее про шаг 16: запись в БД, единственный писатель и журнал')">
+<div class="st" style="background:#185FA5"></div><div class="bd">
+<div class="hr"><span class="nm">16</span><span class="tt">Запись в базу</span><span class="bg" style="background:#E6F1FB;color:#0C447C">База данных</span></div>
+<div class="ds">Пишет только агент — нет конфликтов записи. Журнал изменений (кто/что/когда), обновление плана и хитмапа.</div>
+</div></div>
+<div class="cn"><i class="ti ti-chevron-down"></i></div>
+
+<div class="nd" onclick="sendPrompt('Подробнее про шаг 17: цикл и пересчёт на новые факты')">
+<div class="st" style="background:#888780"></div><div class="bd">
+<div class="hr"><span class="nm">17</span><span class="tt">Готово и цикл</span><span class="bg" style="background:#F1EFE8;color:#444441">Система</span></div>
+<div class="ds">Бот рапортует «готово» и ждёт следующий ввод.</div>
+<div class="br"><span class="ch lp">↺ новые факты (бриф вернулся, отпуск, статус) → пересчёт с шага 9, не двигая сделанное</span></div>
+</div></div>
+
+</div>

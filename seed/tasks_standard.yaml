@@ -1,0 +1,238 @@
+tasks:
+  - ord: 1
+    name: "Анализ брифа клиента"
+    duration_hours: 8
+    is_splittable: false
+    allow_two_assignees: false
+    optional_in_lite: false
+    depends_on: []
+    assignees:
+      - name: "Айгуль"
+        strictness: "A"
+
+  - ord: 2
+    name: "Подготовка вопросов к клиенту"
+    duration_hours: 4
+    is_splittable: false
+    allow_two_assignees: false
+    optional_in_lite: false
+    depends_on: [1]
+    assignees:
+      - name: "Рай"
+        strictness: "B"
+      - name: "Айгуль"
+        strictness: "C"
+
+  - ord: 3
+    name: "Встреча с клиентом (уточнение требований)"
+    duration_hours: 4
+    is_splittable: false
+    allow_two_assignees: true
+    optional_in_lite: false
+    depends_on: [2]
+    assignees:
+      - name: "Андрей"
+        strictness: "A"
+      - name: "Рай"
+        strictness: "B"
+
+  - ord: 4
+    name: "Оформление протокола встречи"
+    duration_hours: 4
+    is_splittable: false
+    allow_two_assignees: false
+    optional_in_lite: false
+    depends_on: [3]
+    assignees:
+      - name: "Айгуль"
+        strictness: "B"
+      - name: "Рай"
+        strictness: "C"
+
+  - ord: 5
+    name: "Анализ конкурентов и рынка"
+    duration_hours: 16
+    is_splittable: true
+    allow_two_assignees: false
+    optional_in_lite: false
+    depends_on: [1]
+    assignees:
+      - name: "Айгуль"
+        strictness: "A"
+
+  - ord: 6
+    name: "Определение технического решения"
+    duration_hours: 8
+    is_splittable: false
+    allow_two_assignees: false
+    optional_in_lite: false
+    depends_on: [4, 5]
+    assignees:
+      - name: "Дима"
+        strictness: "A"
+
+  - ord: 7
+    name: "Оценка трудоёмкости и бюджета"
+    duration_hours: 8
+    is_splittable: false
+    allow_two_assignees: true
+    optional_in_lite: false
+    depends_on: [6]
+    assignees:
+      - name: "Андрей"
+        strictness: "A"
+      - name: "Дима"
+        strictness: "B"
+
+  - ord: 8
+    name: "Разработка структуры коммерческого предложения"
+    duration_hours: 4
+    is_splittable: false
+    allow_two_assignees: false
+    optional_in_lite: false
+    depends_on: [7]
+    assignees:
+      - name: "Рай"
+        strictness: "B"
+      - name: "Андрей"
+        strictness: "C"
+
+  - ord: 9
+    name: "Написание текста КП (основная часть)"
+    duration_hours: 16
+    is_splittable: true
+    allow_two_assignees: false
+    optional_in_lite: false
+    depends_on: [8]
+    assignees:
+      - name: "Лёша"
+        strictness: "A"
+
+  - ord: 10
+    name: "Написание раздела «Технический подход»"
+    duration_hours: 8
+    is_splittable: false
+    allow_two_assignees: false
+    optional_in_lite: false
+    depends_on: [6]
+    assignees:
+      - name: "Дима"
+        strictness: "A"
+
+  - ord: 11
+    name: "Написание раздела «О компании»"
+    duration_hours: 4
+    is_splittable: false
+    allow_two_assignees: false
+    optional_in_lite: false
+    depends_on: [8]
+    assignees:
+      - name: "Лёша"
+        strictness: "B"
+      - name: "Рай"
+        strictness: "C"
+
+  - ord: 12
+    name: "Подготовка кейсов и портфолио"
+    duration_hours: 8
+    is_splittable: true
+    allow_two_assignees: false
+    optional_in_lite: false
+    depends_on: [8]
+    assignees:
+      - name: "Лёша"
+        strictness: "B"
+      - name: "Рай"
+        strictness: "C"
+
+  - ord: 13
+    name: "Создание визуальной концепции КП"
+    duration_hours: 8
+    is_splittable: false
+    allow_two_assignees: false
+    optional_in_lite: false
+    depends_on: [8]
+    assignees:
+      - name: "Катя"
+        strictness: "A"
+
+  - ord: 14
+    name: "Вёрстка КП (дизайн-макет)"
+    duration_hours: 16
+    is_splittable: true
+    allow_two_assignees: false
+    optional_in_lite: false
+    depends_on: [9, 10, 11, 12, 13]
+    assignees:
+      - name: "Катя"
+        strictness: "A"
+
+  - ord: 15
+    name: "Внутренняя проверка и редактура текстов"
+    duration_hours: 4
+    is_splittable: false
+    allow_two_assignees: true
+    optional_in_lite: false
+    depends_on: [14]
+    assignees:
+      - name: "Лёша"
+        strictness: "A"
+      - name: "Андрей"
+        strictness: "B"
+
+  - ord: 16
+    name: "Техническая валидация решения"
+    duration_hours: 4
+    is_splittable: false
+    allow_two_assignees: false
+    optional_in_lite: false
+    depends_on: [14]
+    assignees:
+      - name: "Дима"
+        strictness: "A"
+
+  - ord: 17
+    name: "Согласование КП с руководством"
+    duration_hours: 4
+    is_splittable: false
+    allow_two_assignees: false
+    optional_in_lite: false
+    depends_on: [15, 16]
+    assignees:
+      - name: "Андрей"
+        strictness: "A"
+
+  - ord: 18
+    name: "Финальные правки по итогам согласования"
+    duration_hours: 8
+    is_splittable: false
+    allow_two_assignees: true
+    optional_in_lite: false
+    depends_on: [17]
+    assignees:
+      - name: "Лёша"
+        strictness: "B"
+      - name: "Катя"
+        strictness: "B"
+
+  - ord: 19
+    name: "Подготовка сопроводительного письма"
+    duration_hours: 4
+    is_splittable: false
+    allow_two_assignees: false
+    optional_in_lite: false
+    depends_on: [18]
+    assignees:
+      - name: "Рай"
+        strictness: "A"
+
+  - ord: 20
+    name: "Отправка КП клиенту и фиксация в CRM"
+    duration_hours: 4
+    is_splittable: false
+    allow_two_assignees: false
+    optional_in_lite: false
+    depends_on: [19]
+    assignees:
+      - name: "Рай"
+        strictness: "A"
