@@ -5,9 +5,12 @@ from __future__ import annotations
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.redis import RedisStorage
 
+from planner.app.explain_plan import ExplainPlanUseCase
+from planner.app.ports import RepoPort
 from planner.bot.handlers import confirm, load, start, task_router, whatif
 from planner.bot.middlewares.errors import ErrorBoundaryMiddleware
 from planner.bot.middlewares.permissions import ActorMiddleware
+from planner.domain.solver.ports import SolverPort
 from planner.infra.llm.basic import BasicIntentParser
 from planner.infra.llm.ports import IntentParserPort
 from planner.settings import Settings
@@ -22,16 +25,26 @@ def build_parser(settings: Settings) -> IntentParserPort:
     return BasicIntentParser()
 
 
-def build_dispatcher(settings: Settings, parser: IntentParserPort) -> Dispatcher:
+def build_dispatcher(
+    settings: Settings,
+    parser: IntentParserPort,
+    repo: RepoPort | None = None,
+    solver: SolverPort | None = None,
+) -> Dispatcher:
     storage = RedisStorage.from_url(settings.redis_url)
     dp = Dispatcher(storage=storage)
     dp["parser"] = parser
+    if repo is not None:
+        dp["repo"] = repo
+    if solver is not None:
+        dp["solver"] = solver
+    dp["explain_uc"] = ExplainPlanUseCase(None)
 
     errors_mw = ErrorBoundaryMiddleware()
     dp.message.middleware(errors_mw)
     dp.callback_query.middleware(errors_mw)
 
-    actor_mw = ActorMiddleware(settings.admin_id_set)
+    actor_mw = ActorMiddleware(settings.admin_id_set, repo)
     dp.message.middleware(actor_mw)
     dp.callback_query.middleware(actor_mw)
 

@@ -8,6 +8,7 @@ dependencies = [
     "aiogram>=3.14",
     "aiogram-dialog",
     "fastapi",
+    "uvicorn[standard]",
     "jinja2",
     "python-multipart",
     "sqlalchemy[asyncio]>=2.0",

@@ -13,9 +13,10 @@ from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from planner.bot.runner import build_dispatcher, build_parser
+from planner.domain.solver.greedy import GreedySolver
+from planner.infra.calendar.snapshot import SnapshotCalendar
 from planner.infra.db.base import create_engine, create_session_factory
 from planner.infra.db.repo import SqlAlchemyRepo
-from planner.infra.calendar.snapshot import SnapshotCalendar  # noqa: F401 (cron target)
 from planner.infra.scheduler import SchedulerDeps, register_jobs
 from planner.settings import get_settings
 from planner.web.app import create_app
@@ -29,7 +30,8 @@ async def main() -> None:
     repo = SqlAlchemyRepo(session_factory)
 
     bot = Bot(token=settings.bot_token)
-    dp = build_dispatcher(settings, build_parser(settings))
+    solver = GreedySolver(SnapshotCalendar())
+    dp = build_dispatcher(settings, build_parser(settings), repo, solver)
 
     app = create_app(repo, settings)
     server = uvicorn.Server(
