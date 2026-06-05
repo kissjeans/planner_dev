@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
@@ -24,6 +24,7 @@ from planner.domain.intent import AddProjectIntent, ClarifyIntent, Intent
 from planner.domain.permissions import can_execute
 from planner.domain.solver.ports import SolverPort
 from planner.infra.llm.ports import ChatContext, IntentParserPort
+from planner.infra.stt.whisper import STTPort
 
 router = Router(name="task")
 
@@ -138,6 +139,33 @@ async def _handle_text(
         return
 
     await message.answer(describe_intent(intent))
+
+
+@router.message(F.voice)
+async def handle_voice(
+    message: Message,
+    parser: IntentParserPort,
+    actor: dict,
+    stt: STTPort | None = None,
+    repo: RepoPort | None = None,
+    solver: SolverPort | None = None,
+    actor_record: PersonRecord | None = None,
+    explain_uc: ExplainPlanUseCase | None = None,
+) -> None:
+    if stt is None or message.voice is None:
+        await message.answer("Голосовые сообщения не поддерживаются — напиши текстом.")
+        return
+    bot = message.bot
+    file = await bot.get_file(message.voice.file_id)
+    audio = await bot.download_file(file.file_path)
+    text = await stt.transcribe(audio.read(), "voice.ogg")
+    if not text:
+        await message.answer("Не удалось распознать голос — напиши текстом.")
+        return
+    await _handle_text(
+        message, text, parser, actor,
+        repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
+    )
 
 
 @router.message(Command("task"))
