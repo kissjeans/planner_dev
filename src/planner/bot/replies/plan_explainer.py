@@ -60,6 +60,11 @@ def explain_plan(
     if deadline is not None:
         if missed or (plan.end_date is not None and plan.end_date > deadline):
             lines.append(f"❌ Дедлайн {_fmt_day(deadline)} недостижим.")
+            lines.append(
+                "Рычаги: /whatif lite — сократить объём | "
+                "/whatif +человек — добавить исполнителя | "
+                "/whatif сдвинуть дедлайн — перенести срок"
+            )
         else:
             lines.append(f"✅ Дедлайн {_fmt_day(deadline)} достижим.")
 

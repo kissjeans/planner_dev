@@ -3,12 +3,13 @@
 import hashlib
 import hmac
 import time
+from datetime import date
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 
-from planner.app.ports import AuditRecord, PersonRecord, ProjectRecord
+from planner.app.ports import AuditRecord, PersonRecord, ProjectRecord, TaskRecord
 from planner.settings import Settings
 from planner.web.app import create_app
 from planner.web.auth import COOKIE_NAME, create_jwt
@@ -16,15 +17,19 @@ from planner.web.auth import COOKIE_NAME, create_jwt
 BOT = "123456:TEST-TOKEN"
 JWT_SECRET = "test-secret"
 
+_PROJECT_ID = uuid4()
+_TASK_ID = uuid4()
+
 
 class WebFakeRepo:
     def __init__(self) -> None:
         self.overrides: list = []
         self.audits: list = []
+        self.task_updates: list = []
         self.people = {"Айгуль": PersonRecord(id=uuid4(), name="Айгуль")}
 
     async def list_projects(self):
-        return [ProjectRecord(uuid4(), "Альфа", "planning", None)]
+        return [ProjectRecord(_PROJECT_ID, "Альфа", "planning", None)]
 
     async def list_people(self):
         return list(self.people.values())
@@ -44,6 +49,14 @@ class WebFakeRepo:
 
     async def add_audit(self, actor_id, action, entity_type, entity_id, payload):
         self.audits.append((action, entity_type))
+
+    async def list_project_tasks(self, project_id):
+        return [TaskRecord(id=_TASK_ID, name="Бриф", status="open",
+                           start_date=date(2026, 6, 8), end_date=date(2026, 6, 8),
+                           duration_hours=8)]
+
+    async def update_task_schedule(self, task_id, start, end, person_id):
+        self.task_updates.append((task_id, start, end))
 
 
 def _settings() -> Settings:
@@ -114,6 +127,31 @@ def test_member_cannot_post_vacation(client):
         follow_redirects=False,
     )
     assert r.status_code == 403
+
+
+def test_root_redirects_to_plan(client):
+    r = client.get("/", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/plan"
+
+
+def test_plan_detail_renders_tasks(client):
+    _auth(client)
+    r = client.get(f"/plan/{_PROJECT_ID}")
+    assert r.status_code == 200
+    assert "Бриф" in r.text
+
+
+def test_edit_task_redirects_and_records_update(client):
+    _auth(client, is_admin=True)
+    r = client.post(
+        f"/plan/{_PROJECT_ID}/task/{_TASK_ID}/edit",
+        data={"start": "2026-06-10", "end": "2026-06-12"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert len(client.repo.task_updates) == 1  # type: ignore[attr-defined]
+    assert client.repo.task_updates[0][1] == date(2026, 6, 10)  # type: ignore[attr-defined]
 
 
 def test_telegram_login_callback_sets_cookie(client):

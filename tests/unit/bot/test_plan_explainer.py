@@ -80,3 +80,26 @@ def test_deadline_missed_verdict():
 def test_backward_mode_earliest_end():
     out = explain_plan(PlanResult(assignments=()), {}, {}, earliest_end=date(2026, 7, 12))
     assert "Самая ранняя дата завершения: 12.07" in out
+
+
+def test_deadline_missed_shows_levers():
+    """Acceptance scenario D — deadline missed must suggest levers (spec §12)."""
+    t, p = uuid4(), uuid4()
+    plan = PlanResult(
+        assignments=(_assignment(t, p, date(2026, 6, 25), date(2026, 6, 25)),),
+        end_date=date(2026, 6, 25),
+    )
+    out = explain_plan(plan, {t: "Бриф"}, {p: "Андрей"}, deadline=date(2026, 6, 20))
+    assert "Рычаги" in out
+    assert "lite" in out
+    assert "whatif" in out.lower() or "/whatif" in out
+
+
+def test_deadline_reachable_no_levers():
+    t, p = uuid4(), uuid4()
+    plan = PlanResult(
+        assignments=(_assignment(t, p, date(2026, 6, 8), date(2026, 6, 8)),),
+        end_date=date(2026, 6, 8),
+    )
+    out = explain_plan(plan, {t: "Бриф"}, {p: "Андрей"}, deadline=date(2026, 6, 20))
+    assert "Рычаги" not in out
