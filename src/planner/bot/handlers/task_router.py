@@ -8,11 +8,12 @@ plan. Without those deps it degrades to a human-readable interpretation.
 from __future__ import annotations
 
 from datetime import date
+from uuid import UUID
 
 from aiogram import F, Router
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from planner.app.add_project import (
     AddProjectUseCase,
@@ -31,6 +32,13 @@ from planner.infra.stt.whisper import STTPort
 router = Router(name="task")
 
 
+def _plan_keyboard(pv_id: UUID) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"confirm:{pv_id}"),
+        InlineKeyboardButton(text="✏️ Правка", callback_data=f"edit:{pv_id}"),
+    ]])
+
+
 async def build_add_project_reply(
     intent: AddProjectIntent,
     *,
@@ -39,18 +47,16 @@ async def build_add_project_reply(
     actor_record: PersonRecord,
     today: date,
     explain_uc: ExplainPlanUseCase | None = None,
-) -> str:
-    """Run the AddProject use-case and render the proposed plan as text."""
+) -> tuple[str, UUID | None]:
+    """Run AddProject, return (text, plan_version_id). pv_id is None on error."""
     template = await repo.get_project_template(intent.template_code)
     if template is None:
-        return f"Шаблон «{intent.template_code}» не найден."
+        return f"Шаблон «{intent.template_code}» не найден.", None
 
     people = await repo.get_solver_people()
     if not people:
-        return "В команде нет активных людей — некому планировать."
+        return "В команде нет активных людей — некому планировать.", None
 
-    # Occupy capacity already taken by committed plans so the new project does
-    # not double-book people (spec section 9, hard capacity constraint).
     existing: list = []
     for payload in await repo.list_committed_plans():
         existing.extend(deserialize_allocations(payload))
@@ -66,7 +72,7 @@ async def build_add_project_reply(
             existing_allocations=tuple(existing),
         )
     except InvalidProjectError as exc:
-        return f"Не могу создать проект: {exc}"
+        return f"Не могу создать проект: {exc}", None
 
     task_names = {t.id: t.name for t in result.tasks}
     person_names = {p.id: p.name for p in people}
@@ -78,7 +84,8 @@ async def build_add_project_reply(
         deadline=intent.deadline,
         earliest_end=result.earliest_end,
     )
-    return f"Проект «{result.project.title}» — предложенный план:\n{summary}"
+    text = f"Проект «{result.project.title}» — предложенный план:\n{summary}"
+    return text, result.plan_version_id
 
 
 def describe_intent(intent: Intent) -> str:
@@ -129,7 +136,7 @@ async def _handle_text(
         and solver is not None
         and actor_record is not None
     ):
-        reply = await build_add_project_reply(
+        text, pv_id = await build_add_project_reply(
             intent,
             repo=repo,
             solver=solver,
@@ -137,7 +144,8 @@ async def _handle_text(
             today=date.today(),
             explain_uc=explain_uc,
         )
-        await message.answer(reply)
+        kb = _plan_keyboard(pv_id) if pv_id is not None else None
+        await message.answer(text, reply_markup=kb)
         return
 
     await message.answer(describe_intent(intent))

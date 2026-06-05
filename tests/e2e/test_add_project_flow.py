@@ -122,7 +122,7 @@ async def test_add_project_forward_returns_plan_text():
         deadline=deadline,
     )
 
-    reply = await build_add_project_reply(
+    reply, _ = await build_add_project_reply(
         intent,
         repo=repo,
         solver=solver,
@@ -148,7 +148,7 @@ async def test_add_project_backward_mode_no_deadline():
         deadline=None,
     )
 
-    reply = await build_add_project_reply(
+    reply, _ = await build_add_project_reply(
         intent,
         repo=repo,
         solver=solver,
@@ -172,7 +172,7 @@ async def test_add_project_missing_template_returns_error():
         deadline=None,
     )
 
-    reply = await build_add_project_reply(
+    reply, _ = await build_add_project_reply(
         intent,
         repo=repo,
         solver=solver,
@@ -214,7 +214,7 @@ async def test_add_project_respects_existing_committed_capacity():
 
     intent = AddProjectIntent(title="Дельта", template_code="standard", deadline=None)
 
-    reply = await build_add_project_reply(
+    reply, _ = await build_add_project_reply(
         intent,
         repo=repo,
         solver=solver,

@@ -49,7 +49,7 @@ async def test_reply_contains_project_and_tasks():
     intent = AddProjectIntent(
         title="Альфа", template_code="standard", deadline=TODAY + timedelta(days=30)
     )
-    reply = await build_add_project_reply(
+    reply, pv_id = await build_add_project_reply(
         intent,
         repo=repo,
         solver=GreedySolver(WeekendCalendar()),
@@ -59,7 +59,7 @@ async def test_reply_contains_project_and_tasks():
     assert "Альфа" in reply
     assert "Бриф → Андрей" in reply
     assert "Дизайн → Андрей" in reply
-    # A proposed plan version was persisted.
+    assert pv_id is not None
     assert any(pv.status == "proposed" for pv in repo.plan_versions.values())
 
 
@@ -84,7 +84,7 @@ async def test_committed_allocations_block_capacity():
     intent = AddProjectIntent(
         title="Альфа", template_code="standard", deadline=TODAY + timedelta(days=30)
     )
-    await build_add_project_reply(
+    await build_add_project_reply(  # noqa: F841  (return value not needed here)
         intent,
         repo=repo,
         solver=GreedySolver(WeekendCalendar()),
@@ -101,7 +101,7 @@ async def test_committed_allocations_block_capacity():
 async def test_unknown_template_message():
     repo, _ = _setup_repo()
     intent = AddProjectIntent(title="Альфа", template_code="lite")
-    reply = await build_add_project_reply(
+    reply, pv_id = await build_add_project_reply(
         intent,
         repo=repo,
         solver=GreedySolver(WeekendCalendar()),
@@ -109,6 +109,7 @@ async def test_unknown_template_message():
         today=TODAY,
     )
     assert "не найден" in reply
+    assert pv_id is None
 
 
 @pytest.mark.asyncio
@@ -116,7 +117,7 @@ async def test_no_people_message():
     repo, _ = _setup_repo()
     repo.solver_people = ()
     intent = AddProjectIntent(title="Альфа", template_code="standard")
-    reply = await build_add_project_reply(
+    reply, pv_id = await build_add_project_reply(
         intent,
         repo=repo,
         solver=GreedySolver(WeekendCalendar()),
@@ -124,6 +125,7 @@ async def test_no_people_message():
         today=TODAY,
     )
     assert "нет активных людей" in reply
+    assert pv_id is None
 
 
 @pytest.mark.asyncio
@@ -132,7 +134,7 @@ async def test_past_deadline_message():
     intent = AddProjectIntent(
         title="Альфа", template_code="standard", deadline=TODAY - timedelta(days=1)
     )
-    reply = await build_add_project_reply(
+    reply, pv_id = await build_add_project_reply(
         intent,
         repo=repo,
         solver=GreedySolver(WeekendCalendar()),
@@ -140,3 +142,4 @@ async def test_past_deadline_message():
         today=TODAY,
     )
     assert "Не могу создать проект" in reply
+    assert pv_id is None
