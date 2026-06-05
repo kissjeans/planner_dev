@@ -58,6 +58,10 @@ class RepoPort(Protocol):
 
     async def get_committed_plan(self, project_id: UUID) -> PlanVersionRecord | None: ...
 
+    async def list_committed_plans(self) -> list[dict[str, Any]]:
+        """Payloads of all committed plan versions (for the load heatmap)."""
+        ...
+
     async def create_project(
         self,
         *,

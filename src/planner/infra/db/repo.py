@@ -185,6 +185,13 @@ class SqlAlchemyRepo:
             rows = await s.scalars(select(Person).order_by(Person.name))
             return [_person_record(p) for p in rows]
 
+    async def list_committed_plans(self) -> list[dict[str, Any]]:
+        async with self._sf() as s:
+            rows = await s.scalars(
+                select(PlanVersion).where(PlanVersion.status == "committed")
+            )
+            return [pv.payload for pv in rows]
+
     async def get_solver_people(self) -> tuple[DomainPerson, ...]:
         async with self._sf() as s:
             rows = await s.scalars(

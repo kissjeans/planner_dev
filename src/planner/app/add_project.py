@@ -16,12 +16,14 @@ from uuid import UUID, uuid4
 from planner.app.ports import PersonRecord, ProjectRecord, RepoPort
 from planner.domain.intent import AddProjectIntent
 from planner.domain.models import (
+    Assignment,
     DayAllocation,
     DayOverride,
     Dependency,
     Person,
     PlanRequest,
     PlanResult,
+    RiskFlag,
     Task,
 )
 from planner.domain.solver.ports import SolverPort
@@ -127,6 +129,63 @@ def serialize_plan(plan: PlanResult) -> dict[str, Any]:
         ],
         "end_date": plan.end_date.isoformat() if plan.end_date else None,
     }
+
+
+def _opt_uuid(v: str | None) -> UUID | None:
+    return UUID(v) if v else None
+
+
+def _opt_date(v: str | None) -> date | None:
+    return date.fromisoformat(v) if v else None
+
+
+def deserialize_allocations(payload: dict[str, Any]) -> tuple[DayAllocation, ...]:
+    """Flatten a serialized plan payload back into per-day allocations (for /load)."""
+    out: list[DayAllocation] = []
+    for a in payload.get("assignments", []):
+        for al in a.get("allocations", []):
+            out.append(
+                DayAllocation(
+                    person_id=UUID(al["person_id"]),
+                    day=date.fromisoformat(al["day"]),
+                    hours=al["hours"],
+                )
+            )
+    return tuple(out)
+
+
+def deserialize_plan(payload: dict[str, Any]) -> PlanResult:
+    """Inverse of :func:`serialize_plan` (round-trips a committed plan payload)."""
+    assignments = tuple(
+        Assignment(
+            task_id=UUID(a["task_id"]),
+            person_id=UUID(a["person_id"]),
+            start_date=date.fromisoformat(a["start_date"]),
+            end_date=date.fromisoformat(a["end_date"]),
+            allocations=tuple(
+                DayAllocation(
+                    person_id=UUID(al["person_id"]),
+                    day=date.fromisoformat(al["day"]),
+                    hours=al["hours"],
+                )
+                for al in a["allocations"]
+            ),
+        )
+        for a in payload.get("assignments", [])
+    )
+    risks = tuple(
+        RiskFlag(
+            kind=r["kind"],
+            message=r["message"],
+            task_id=_opt_uuid(r.get("task_id")),
+            person_id=_opt_uuid(r.get("person_id")),
+            day=_opt_date(r.get("day")),
+        )
+        for r in payload.get("risks", [])
+    )
+    return PlanResult(
+        assignments=assignments, risks=risks, end_date=_opt_date(payload.get("end_date"))
+    )
 
 
 class AddProjectUseCase:

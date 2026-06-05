@@ -1,0 +1,49 @@
+"""Tests for the /load heatmap orchestrator (spec 7.4 / 8.1)."""
+
+from __future__ import annotations
+
+from datetime import date
+from uuid import uuid4
+
+import pytest
+
+from planner.app.add_project import serialize_plan
+from planner.bot.handlers.load import build_load_image
+from planner.domain.models import Assignment, DayAllocation, Person, PlanResult
+from tests.unit.app.conftest import FakeRepo
+
+START = date(2026, 6, 8)
+
+
+def _committed_payload(person_id):
+    plan = PlanResult(
+        assignments=(
+            Assignment(
+                task_id=uuid4(),
+                person_id=person_id,
+                start_date=START,
+                end_date=START,
+                allocations=(DayAllocation(person_id, START, 8),),
+            ),
+        )
+    )
+    return serialize_plan(plan)
+
+
+@pytest.mark.asyncio
+async def test_returns_png_bytes():
+    repo = FakeRepo()
+    andrey = Person(id=uuid4(), name="Андрей", capacity_h=8)
+    repo.solver_people = (andrey,)
+    repo.committed_payloads = [_committed_payload(andrey.id)]
+
+    png = await build_load_image(repo, start=START)
+    assert png is not None
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"  # PNG magic header
+
+
+@pytest.mark.asyncio
+async def test_none_without_people():
+    repo = FakeRepo()
+    repo.solver_people = ()
+    assert await build_load_image(repo, start=START) is None

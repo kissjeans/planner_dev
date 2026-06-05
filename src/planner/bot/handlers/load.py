@@ -1,7 +1,8 @@
-"""/load handler (spec section 8.1).
+"""/load handler (spec section 8.1 + 7.4).
 
-Sprint 3 baseline: parse the optional person filter and acknowledge. The PNG
-heatmap render is added in Sprint 4 (LoadSummaryUseCase).
+Renders the 14-day team load heatmap from committed plans. Reconstructs per-day
+allocations from committed ``plan_versions.payload`` (no re-solve needed). Falls
+back to a text acknowledgement when the repo is not wired.
 """
 
 from __future__ import annotations
@@ -10,16 +11,49 @@ from datetime import date
 
 from aiogram import Router
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import BufferedInputFile, Message
 
+from planner.app.add_project import deserialize_allocations
+from planner.app.load_summary import DEFAULT_DAYS, LoadSummaryUseCase
+from planner.app.ports import RepoPort
 from planner.infra.llm.ports import ChatContext, IntentParserPort
 
 router = Router(name="load")
 
 
+async def build_load_image(
+    repo: RepoPort, *, start: date, days: int = DEFAULT_DAYS
+) -> bytes | None:
+    """Build the load heatmap PNG, or None when there is no team to render."""
+    people = await repo.get_solver_people()
+    if not people:
+        return None
+
+    allocations = []
+    for payload in await repo.list_committed_plans():
+        allocations.extend(deserialize_allocations(payload))
+
+    return LoadSummaryUseCase().execute(list(people), allocations, start, days)
+
+
 @router.message(Command("load"))
-async def handle_load(message: Message, parser: IntentParserPort) -> None:
+async def handle_load(
+    message: Message, parser: IntentParserPort, repo: RepoPort | None = None
+) -> None:
     text = (message.text or "").partition(" ")[2].strip() or "load"
     intent = await parser.parse(text, ChatContext(today=date.today()))
     who = getattr(intent, "person_name", None) or "вся команда"
-    await message.answer(f"Загрузка ({who}): рендер появится в Спринте 4.")
+
+    if repo is None:
+        await message.answer(f"Загрузка ({who}): репозиторий не подключён.")
+        return
+
+    png = await build_load_image(repo, start=date.today())
+    if png is None:
+        await message.answer("В команде нет активных людей — нечего показывать.")
+        return
+
+    await message.answer_photo(
+        BufferedInputFile(png, filename="load.png"),
+        caption=f"Загрузка ({who}) на {DEFAULT_DAYS} дней.",
+    )

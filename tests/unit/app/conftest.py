@@ -32,6 +32,9 @@ class FakeRepo:
     async def get_solver_people(self):
         return tuple(getattr(self, "solver_people", ()))
 
+    async def list_committed_plans(self):
+        return list(getattr(self, "committed_payloads", []))
+
     async def get_project_template(self, code: str):
         return getattr(self, "templates", {}).get(code)
 
