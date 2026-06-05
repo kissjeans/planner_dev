@@ -8,14 +8,13 @@ from __future__ import annotations
 
 import math
 from datetime import date
+from uuid import UUID
 
 import networkx as nx
 
-from uuid import UUID
-
 from planner.domain.calendar.ports import WorkingCalendar
 from planner.domain.calendar.rules import first_working_day, nth_working_day
-from planner.domain.models import PlanRequest, Person, Task
+from planner.domain.models import Person, PlanRequest, Task
 
 
 def _duration_days(task: Task, people_by_id: dict[UUID, Person]) -> int:

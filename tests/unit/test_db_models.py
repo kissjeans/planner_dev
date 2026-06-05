@@ -5,23 +5,21 @@ SQLAlchemy can map all model classes without errors, and that
 each table has the expected columns.
 """
 
-import pytest
 from sqlalchemy import inspect
 
 from planner.infra.db.models import (
     Assignment,
-    Dependency,
     DayOverride,
+    Dependency,
     Person,
     PlanVersion,
     Project,
     Task,
-    TemplateDependency,
     Template,
+    TemplateDependency,
     TemplateTask,
     TemplateTaskAssignee,
 )
-
 
 # ---------------------------------------------------------------------------
 # __tablename__ checks

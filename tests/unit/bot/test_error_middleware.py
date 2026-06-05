@@ -45,8 +45,7 @@ async def test_error_middleware_catches_exception_and_answers():
     # Use a Message-like object so the middleware calls event.answer
     event = SimpleNamespace(spec=Message, answer=answers.answer)
     # Patch isinstance check by making our SimpleNamespace pass
-    import planner.bot.middlewares.errors as mod
-    original_isinstance = __builtins__["isinstance"] if isinstance(__builtins__, dict) else isinstance
+    __builtins__["isinstance"] if isinstance(__builtins__, dict) else isinstance
 
     # Directly test through a real Message-compatible path by mocking the branch
     # We call the middleware with a plain object; it should still not re-raise.
@@ -57,7 +56,6 @@ async def test_error_middleware_catches_exception_and_answers():
 @pytest.mark.asyncio
 async def test_error_middleware_message_event_answers_user():
     """When the event IS a Message, the user gets a friendly error reply."""
-    from aiogram.types import Message
 
     mw = ErrorBoundaryMiddleware()
     answers = _Answers()
@@ -70,7 +68,6 @@ async def test_error_middleware_message_event_answers_user():
             answers.calls.append(text)
 
     # Patch the isinstance check used inside the middleware
-    import planner.bot.middlewares.errors as errors_mod
 
     async def bad_handler(event: Any, data: Any) -> None:
         raise RuntimeError("test error")

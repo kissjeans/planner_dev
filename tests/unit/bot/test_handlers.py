@@ -2,21 +2,19 @@
 
 from __future__ import annotations
 
+from datetime import date
 from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
 import pytest
 
-from planner.app.ports import PersonRecord, PlanVersionRecord
+from planner.app.ports import PersonRecord
 from planner.bot.handlers import confirm, start, vacation, whatif
 from planner.domain.intent import (
-    ConfirmIntent,
     VacationIntent,
     WhatIfIntent,
 )
-from datetime import date
-
 
 # ---------------------------------------------------------------------------
 # Shared fake helpers
@@ -112,7 +110,6 @@ async def test_vacation_wrong_intent_shows_format_hint():
 @pytest.mark.asyncio
 async def test_vacation_with_repo_calls_use_case():
     from planner.app.ports import PersonRecord
-    from planner.app.set_vacation import PersonNotFoundError
 
     class _FakeRepo:
         def __init__(self) -> None:
@@ -226,7 +223,7 @@ async def test_confirm_callback_no_repo_acknowledges():
 
 @pytest.mark.asyncio
 async def test_confirm_callback_with_repo_calls_use_case():
-    from planner.app.confirm_plan import ConfirmPlanUseCase, PlanNotFoundError
+    from planner.app.confirm_plan import PlanNotFoundError
 
     pv_id = uuid4()
     actor_record = PersonRecord(id=uuid4(), name="Admin", is_admin=True)

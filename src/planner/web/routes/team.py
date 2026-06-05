@@ -52,8 +52,7 @@ async def add_vacation(
         day_to=date.fromisoformat(day_to),
         capacity_h=capacity_h,
     )
-    try:
+    import contextlib
+    with contextlib.suppress(PersonNotFoundError):
         await SetVacationUseCase(repo).execute(intent, _actor(user))
-    except PersonNotFoundError:
-        pass  # swallow: person not on team -> nothing to schedule
     return RedirectResponse("/team", status_code=status.HTTP_303_SEE_OTHER)

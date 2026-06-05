@@ -9,7 +9,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import insert, text
 
-from planner.infra.db.models import Person, Template, TemplateTask
+from planner.infra.db.models import Person
 from planner.infra.db.repo import SqlAlchemyRepo
 
 
@@ -60,8 +60,9 @@ async def test_upsert_day_override_inserts_and_updates(repo, seed_person):
     # upsert again with updated capacity
     await repo.upsert_day_override(seed_person, day, 4, "half day")
 
-    from planner.infra.db.models import DayOverride
     from sqlalchemy import select
+
+    from planner.infra.db.models import DayOverride
     async with repo._sf() as s:
         row = await s.scalar(
             select(DayOverride).where(

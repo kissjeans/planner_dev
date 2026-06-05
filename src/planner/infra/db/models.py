@@ -1,7 +1,6 @@
 """SQLAlchemy ORM models for all planner domain tables."""
 
 import uuid
-from datetime import date, datetime
 
 from sqlalchemy import (
     Boolean,
@@ -13,7 +12,6 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID

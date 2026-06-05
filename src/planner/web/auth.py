@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from jose import JWTError, jwt
@@ -35,14 +35,12 @@ def verify_telegram_login(data: dict[str, str], bot_token: str) -> bool:
         return False
 
     auth_date = data.get("auth_date")
-    if auth_date and time.time() - int(auth_date) > _AUTH_MAX_AGE:
-        return False
-    return True
+    return not (auth_date and time.time() - int(auth_date) > _AUTH_MAX_AGE)
 
 
 def create_jwt(claims: dict[str, Any], secret: str) -> str:
     payload = dict(claims)
-    payload["exp"] = datetime.now(timezone.utc) + timedelta(hours=JWT_TTL_HOURS)
+    payload["exp"] = datetime.now(UTC) + timedelta(hours=JWT_TTL_HOURS)
     return jwt.encode(payload, secret, algorithm=JWT_ALGO)
 
 

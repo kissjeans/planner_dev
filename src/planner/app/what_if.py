@@ -10,7 +10,7 @@ import dataclasses
 from uuid import uuid4
 
 from planner.domain.intent import WhatIfIntent
-from planner.domain.models import PlanDiff, PlanRequest, Person, Task
+from planner.domain.models import Person, PlanDiff, PlanRequest
 from planner.domain.solver.ports import SolverPort
 
 

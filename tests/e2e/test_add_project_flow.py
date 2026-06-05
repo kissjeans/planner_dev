@@ -13,12 +13,9 @@ from uuid import UUID, uuid4
 import pytest
 
 from planner.app.add_project import (
-    AddProjectUseCase,
     ProjectTemplate,
     TemplateTaskSpec,
-    deserialize_allocations,
 )
-from planner.app.explain_plan import ExplainPlanUseCase
 from planner.app.ports import PersonRecord, PlanVersionRecord, ProjectRecord
 from planner.bot.handlers.task_router import build_add_project_reply
 from planner.domain.calendar.rules import WeekendCalendar

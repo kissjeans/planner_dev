@@ -7,8 +7,6 @@ reflects all 11 expected domain tables — no live database required.
 import os
 import sys
 
-import pytest
-
 # Ensure src/ is on the path (mirrors what alembic/env.py does)
 _SRC = os.path.join(os.path.dirname(__file__), "..", "..", "src")
 if _SRC not in sys.path:

@@ -21,10 +21,10 @@ from planner.domain.models import (
     DayAllocation,
     DayOverride,
     Dependency,
+    Person,
     PlanDiff,
     PlanRequest,
     PlanResult,
-    Person,
     RiskFlag,
     Task,
 )

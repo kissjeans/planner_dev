@@ -13,7 +13,6 @@ from planner.infra.db.audit import write_audit
 from planner.infra.db.base import Base
 from planner.infra.db.models import AuditLog
 
-
 # ---------------------------------------------------------------------------
 # Model structure
 # ---------------------------------------------------------------------------

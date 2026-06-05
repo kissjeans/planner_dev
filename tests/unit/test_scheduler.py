@@ -13,7 +13,9 @@ class _FakeScheduler:
     def __init__(self) -> None:
         self.jobs: list[dict[str, Any]] = []
 
-    def add_job(self, func: Any, trigger: Any, id: str = "", replace_existing: bool = False) -> None:
+    def add_job(
+        self, func: Any, trigger: Any, id: str = "", replace_existing: bool = False
+    ) -> None:
         self.jobs.append({"func": func, "trigger": trigger, "id": id})
 
 

@@ -3,13 +3,13 @@
 from pydantic import TypeAdapter
 
 from planner.domain.intent import (
+    WRITE_KINDS,
     AddProjectIntent,
     ClarifyIntent,
     Intent,
     LoadIntent,
     VacationIntent,
     WhatIfIntent,
-    WRITE_KINDS,
 )
 
 _ta = TypeAdapter(Intent)

@@ -1,6 +1,5 @@
 """Tests for SQLAlchemy async Base and session factory."""
 
-import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from planner.infra.db.base import Base, create_engine, create_session_factory

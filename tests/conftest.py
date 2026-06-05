@@ -75,7 +75,6 @@ def db_session_factory(db_engine) -> async_sessionmaker[AsyncSession]:
 @pytest_asyncio.fixture
 async def db_session(db_session_factory) -> AsyncSession:
     """Per-test async session with automatic rollback."""
-    async with db_session_factory() as session:
-        async with session.begin():
-            yield session
-            await session.rollback()
+    async with db_session_factory() as session, session.begin():
+        yield session
+        await session.rollback()

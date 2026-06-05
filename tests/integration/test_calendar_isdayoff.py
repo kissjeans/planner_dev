@@ -14,7 +14,6 @@ from planner.infra.calendar.isdayoff import (
 )
 from planner.infra.calendar.snapshot import SnapshotCalendar
 
-
 # --- SnapshotCalendar (synchronous CalendarPort) ---
 
 def test_snapshot_new_year_is_holiday():
