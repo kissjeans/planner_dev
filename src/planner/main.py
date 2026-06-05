@@ -12,6 +12,7 @@ import uvicorn
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from planner.bot.handlers.load import build_load_image
 from planner.bot.runner import build_dispatcher, build_parser
 from planner.domain.solver.greedy import GreedySolver
 from planner.infra.calendar.snapshot import SnapshotCalendar
@@ -41,7 +42,18 @@ async def main() -> None:
     scheduler = AsyncIOScheduler()
 
     async def _daily_summary() -> None:
-        await bot.send_message(settings.team_chat_id, "Дневная сводка нагрузки.")
+        from datetime import date
+
+        from aiogram.types import BufferedInputFile
+        png = await build_load_image(repo, start=date.today())
+        if png:
+            await bot.send_photo(
+                settings.team_chat_id,
+                BufferedInputFile(png, filename="load.png"),
+                caption="Дневная сводка нагрузки команды.",
+            )
+        else:
+            await bot.send_message(settings.team_chat_id, "Дневная сводка: активных планов нет.")
 
     async def _refresh_calendar() -> None:  # snapshot refresh hook (spec 11)
         return None

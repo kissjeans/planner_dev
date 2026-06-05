@@ -37,6 +37,16 @@ class ProjectRecord:
 
 
 @dataclass(frozen=True)
+class TaskRecord:
+    id: UUID
+    name: str
+    status: str
+    start_date: date | None = None
+    end_date: date | None = None
+    duration_hours: int = 0
+
+
+@dataclass(frozen=True)
 class AuditRecord:
     created_at: str
     action: str
@@ -88,6 +98,8 @@ class RepoPort(Protocol):
     # --- Read side, consumed by the web admin (spec section 9) ---
 
     async def list_projects(self) -> list[ProjectRecord]: ...
+
+    async def list_project_tasks(self, project_id: UUID) -> list[TaskRecord]: ...
 
     async def list_people(self) -> list[PersonRecord]: ...
 

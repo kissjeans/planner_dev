@@ -31,6 +31,21 @@ async def plan_list(
     )
 
 
+@router.get("/plan/{project_id}", response_class=HTMLResponse)
+async def plan_detail(
+    project_id: UUID,
+    request: Request,
+    user: dict = Depends(current_user),
+    repo: RepoPort = Depends(get_repo),
+) -> HTMLResponse:
+    tasks = await repo.list_project_tasks(project_id)
+    return request.app.state.templates.TemplateResponse(
+        request,
+        "plan_detail.html",
+        {"project_id": project_id, "tasks": tasks, "user": user},
+    )
+
+
 @router.post("/plan/{project_id}/task/{task_id}/edit")
 async def edit_task(
     project_id: UUID,

@@ -183,12 +183,32 @@ async def handle_task(
         await message.answer("Напиши, что нужно: /task <текст>.")
         return
     await _handle_text(
-        message,
-        text,
-        parser,
-        actor,
-        repo=repo,
-        solver=solver,
-        actor_record=actor_record,
-        explain_uc=explain_uc,
+        message, text, parser, actor,
+        repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
+    )
+
+
+@router.message(F.text & ~F.text.startswith("/"))
+async def handle_mention_or_dm(
+    message: Message,
+    parser: IntentParserPort,
+    actor: dict,
+    repo: RepoPort | None = None,
+    solver: SolverPort | None = None,
+    actor_record: PersonRecord | None = None,
+    explain_uc: ExplainPlanUseCase | None = None,
+) -> None:
+    """Handle @mention in groups and direct messages in private chats (spec 8.1).
+
+    In privacy mode ON (BotFather), the bot only receives group messages that
+    mention it or reply to it — so this handler fires only on relevant updates.
+    Strips the leading @username prefix when present.
+    """
+    raw = message.text or ""
+    text = raw.partition(" ")[2].strip() if raw.startswith("@") else raw.strip()
+    if not text:
+        return
+    await _handle_text(
+        message, text, parser, actor,
+        repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
     )

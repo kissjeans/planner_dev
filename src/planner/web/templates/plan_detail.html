@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Детали проекта{% endblock %}
+{% block body %}
+<h1>Проект</h1>
+<p><a href="/plan">← Назад</a></p>
+{% if tasks %}
+<table>
+  <thead>
+    <tr><th>Задача</th><th>Статус</th><th>Начало</th><th>Конец</th><th>Часов</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for t in tasks %}
+    <tr>
+      <td>{{ t.name }}</td>
+      <td>{{ t.status }}</td>
+      <td>{{ t.start_date or "—" }}</td>
+      <td>{{ t.end_date or "—" }}</td>
+      <td>{{ t.duration_hours }}</td>
+      <td>
+        <form method="post" action="/plan/{{ project_id }}/task/{{ t.id }}/edit">
+          <input type="date" name="start" value="{{ t.start_date or '' }}">
+          <input type="date" name="end" value="{{ t.end_date or '' }}">
+          <button type="submit">Сохранить</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>Задач нет.</p>
+{% endif %}
+{% endblock %}

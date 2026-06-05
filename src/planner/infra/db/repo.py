@@ -20,6 +20,7 @@ from planner.app.ports import (
     PersonRecord,
     PlanVersionRecord,
     ProjectRecord,
+    TaskRecord,
 )
 from planner.domain.models import Person as DomainPerson
 from planner.infra.db.models import (
@@ -178,6 +179,23 @@ class SqlAlchemyRepo:
             rows = await s.scalars(select(Project).order_by(Project.created_at.desc()))
             return [
                 ProjectRecord(p.id, p.title, p.status, p.deadline) for p in rows
+            ]
+
+    async def list_project_tasks(self, project_id: UUID) -> list[TaskRecord]:
+        async with self._sf() as s:
+            rows = await s.scalars(
+                select(Task).where(Task.project_id == project_id).order_by(Task.name)
+            )
+            return [
+                TaskRecord(
+                    id=t.id,
+                    name=t.name,
+                    status=t.status,
+                    start_date=t.start_date,
+                    end_date=t.end_date,
+                    duration_hours=t.duration_hours,
+                )
+                for t in rows
             ]
 
     async def list_people(self) -> list[PersonRecord]:
