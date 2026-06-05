@@ -56,6 +56,7 @@ class AddProjectResult:
     project: ProjectRecord
     plan_version_id: UUID
     plan: PlanResult
+    tasks: tuple[Task, ...]  # instantiated tasks (for name maps / rendering)
     earliest_end: date | None  # backward-mode critical-path end (None in forward mode)
 
 
@@ -189,5 +190,6 @@ class AddProjectUseCase:
             project=project,
             plan_version_id=pv.id,
             plan=plan,
+            tasks=tasks,
             earliest_end=earliest_end,
         )

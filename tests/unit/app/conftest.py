@@ -29,6 +29,12 @@ class FakeRepo:
         self.projects[rec.id] = rec
         return rec
 
+    async def get_solver_people(self):
+        return tuple(getattr(self, "solver_people", ()))
+
+    async def get_project_template(self, code: str):
+        return getattr(self, "templates", {}).get(code)
+
     async def get_person_by_name(self, name: str) -> PersonRecord | None:
         return self.people.get(name)
 

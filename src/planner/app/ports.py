@@ -91,6 +91,16 @@ class RepoPort(Protocol):
 
     async def get_person_by_tg_id(self, tg_user_id: int) -> PersonRecord | None: ...
 
+    # --- Solver inputs (spec section 7.1) ---
+
+    async def get_solver_people(self) -> tuple[Any, ...]:
+        """Active team members as domain ``Person`` objects for the solver."""
+        ...
+
+    async def get_project_template(self, code: str) -> Any | None:
+        """A ``ProjectTemplate`` (app.add_project) by code, or None if absent."""
+        ...
+
     async def update_task_schedule(
         self, task_id: UUID, start: date | None, end: date | None, person_id: UUID | None
     ) -> None: ...

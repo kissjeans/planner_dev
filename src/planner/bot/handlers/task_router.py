@@ -1,8 +1,8 @@
 """/task and @mention router (spec section 8.1).
 
-Sprint 3 baseline: parse the message into an intent, enforce the write-gate,
-and reply with a human-readable interpretation. Wiring intents to the
-use-cases (AddProject, WhatIf, ...) lands in Sprint 4.
+Parses the message into an intent, enforces the write-gate, and — when the
+solver/repo are wired — runs the AddProject flow and replies with the explained
+plan. Without those deps it degrades to a human-readable interpretation.
 """
 
 from __future__ import annotations
@@ -13,11 +13,54 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from planner.domain.intent import ClarifyIntent, Intent
+from planner.app.add_project import AddProjectUseCase, InvalidProjectError
+from planner.app.explain_plan import ExplainPlanUseCase
+from planner.app.ports import PersonRecord, RepoPort
+from planner.domain.intent import AddProjectIntent, ClarifyIntent, Intent
 from planner.domain.permissions import can_execute
+from planner.domain.solver.ports import SolverPort
 from planner.infra.llm.ports import ChatContext, IntentParserPort
 
 router = Router(name="task")
+
+
+async def build_add_project_reply(
+    intent: AddProjectIntent,
+    *,
+    repo: RepoPort,
+    solver: SolverPort,
+    actor_record: PersonRecord,
+    today: date,
+    explain_uc: ExplainPlanUseCase | None = None,
+) -> str:
+    """Run the AddProject use-case and render the proposed plan as text."""
+    template = await repo.get_project_template(intent.template_code)
+    if template is None:
+        return f"Шаблон «{intent.template_code}» не найден."
+
+    people = await repo.get_solver_people()
+    if not people:
+        return "В команде нет активных людей — некому планировать."
+
+    uc = AddProjectUseCase(repo, solver)
+    try:
+        result = await uc.execute(
+            intent, actor_record, tuple(people), template, today=today
+        )
+    except InvalidProjectError as exc:
+        return f"Не могу создать проект: {exc}"
+
+    task_names = {t.id: t.name for t in result.tasks}
+    person_names = {p.id: p.name for p in people}
+    explainer = explain_uc or ExplainPlanUseCase(None)
+    summary = await explainer.execute(
+        result.plan,
+        task_names,
+        person_names,
+        deadline=intent.deadline,
+        earliest_end=result.earliest_end,
+    )
+    return f"Проект «{result.project.title}» — предложенный план:\n{summary}"
 
 
 def describe_intent(intent: Intent) -> str:
@@ -41,7 +84,15 @@ def describe_intent(intent: Intent) -> str:
 
 
 async def _handle_text(
-    message: Message, text: str, parser: IntentParserPort, actor: dict
+    message: Message,
+    text: str,
+    parser: IntentParserPort,
+    actor: dict,
+    *,
+    repo: RepoPort | None = None,
+    solver: SolverPort | None = None,
+    actor_record: PersonRecord | None = None,
+    explain_uc: ExplainPlanUseCase | None = None,
 ) -> None:
     ctx = ChatContext(today=date.today())
     intent = await parser.parse(text, ctx)
@@ -54,15 +105,47 @@ async def _handle_text(
         await message.answer("Только админ может править план.")
         return
 
+    if (
+        isinstance(intent, AddProjectIntent)
+        and repo is not None
+        and solver is not None
+        and actor_record is not None
+    ):
+        reply = await build_add_project_reply(
+            intent,
+            repo=repo,
+            solver=solver,
+            actor_record=actor_record,
+            today=date.today(),
+            explain_uc=explain_uc,
+        )
+        await message.answer(reply)
+        return
+
     await message.answer(describe_intent(intent))
 
 
 @router.message(Command("task"))
 async def handle_task(
-    message: Message, parser: IntentParserPort, actor: dict
+    message: Message,
+    parser: IntentParserPort,
+    actor: dict,
+    repo: RepoPort | None = None,
+    solver: SolverPort | None = None,
+    actor_record: PersonRecord | None = None,
+    explain_uc: ExplainPlanUseCase | None = None,
 ) -> None:
     text = (message.text or "").partition(" ")[2].strip()
     if not text:
         await message.answer("Напиши, что нужно: /task <текст>.")
         return
-    await _handle_text(message, text, parser, actor)
+    await _handle_text(
+        message,
+        text,
+        parser,
+        actor,
+        repo=repo,
+        solver=solver,
+        actor_record=actor_record,
+        explain_uc=explain_uc,
+    )

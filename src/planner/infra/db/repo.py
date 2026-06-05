@@ -14,12 +14,14 @@ from uuid import UUID, uuid4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from planner.app.add_project import ProjectTemplate, TemplateTaskSpec
 from planner.app.ports import (
     AuditRecord,
     PersonRecord,
     PlanVersionRecord,
     ProjectRecord,
 )
+from planner.domain.models import Person as DomainPerson
 from planner.infra.db.models import (
     AuditLog,
     Person,
@@ -27,6 +29,9 @@ from planner.infra.db.models import (
     Project,
     Task,
     Template,
+    TemplateDependency,
+    TemplateTask,
+    TemplateTaskAssignee,
 )
 
 
@@ -179,6 +184,65 @@ class SqlAlchemyRepo:
         async with self._sf() as s:
             rows = await s.scalars(select(Person).order_by(Person.name))
             return [_person_record(p) for p in rows]
+
+    async def get_solver_people(self) -> tuple[DomainPerson, ...]:
+        async with self._sf() as s:
+            rows = await s.scalars(
+                select(Person).where(Person.is_active.is_(True)).order_by(Person.name)
+            )
+            return tuple(
+                DomainPerson(id=p.id, name=p.name, capacity_h=p.capacity_h) for p in rows
+            )
+
+    async def get_project_template(self, code: str) -> ProjectTemplate | None:
+        async with self._sf() as s:
+            template = await s.scalar(select(Template).where(Template.code == code))
+            if template is None:
+                return None
+
+            tt_rows = list(
+                await s.scalars(
+                    select(TemplateTask)
+                    .where(TemplateTask.template_id == template.id)
+                    .order_by(TemplateTask.ord)
+                )
+            )
+            id_to_ord = {tt.id: tt.ord for tt in tt_rows}
+
+            assignees: dict[UUID, list[UUID]] = {}
+            for row in await s.scalars(
+                select(TemplateTaskAssignee).where(
+                    TemplateTaskAssignee.template_task_id.in_(id_to_ord)
+                )
+            ):
+                assignees.setdefault(row.template_task_id, []).append(row.person_id)
+
+            deps: dict[UUID, list[tuple[int, str]]] = {}
+            for row in await s.scalars(
+                select(TemplateDependency).where(
+                    TemplateDependency.template_task_id.in_(id_to_ord)
+                )
+            ):
+                dep_ord = id_to_ord.get(row.depends_on_id)
+                if dep_ord is not None:
+                    deps.setdefault(row.template_task_id, []).append(
+                        (dep_ord, row.link_type)
+                    )
+
+            specs = tuple(
+                TemplateTaskSpec(
+                    ord=tt.ord,
+                    name=tt.name,
+                    duration_hours=tt.duration_hours,
+                    allowed_person_ids=tuple(assignees.get(tt.id, ())),
+                    depends_on_ords=tuple(o for o, _ in deps.get(tt.id, ())),
+                    link_types=tuple(lt for _, lt in deps.get(tt.id, ())),
+                    is_splittable=bool(tt.is_splittable),
+                    allow_two_assignees=bool(tt.allow_two_assignees),
+                )
+                for tt in tt_rows
+            )
+        return ProjectTemplate(code=code, tasks=specs)
 
     async def list_audit(self, limit: int = 50, offset: int = 0) -> list[AuditRecord]:
         async with self._sf() as s:
