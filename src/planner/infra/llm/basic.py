@@ -76,7 +76,13 @@ class BasicIntentParser:
     def parse_sync(self, text: str, ctx: ChatContext) -> Intent:
         low = text.lower().lstrip("/").strip()
 
-        if low.startswith(("load", "загруз", "нагруз")) or "/load" in text:
+        _load_kw = ("load", "загруз", "нагруз", "загузк", "нагузк")
+        if any(kw in low for kw in _load_kw) or "/load" in text:
+            return LoadIntent(person_name=_resolve_person(text, ctx))
+
+        # "какие задачи / статус / что сейчас" → show team load
+        _task_query_kw = ("задач", "что сейчас", "что идёт", "статус", "текущ")
+        if any(kw in low for kw in _task_query_kw):
             return LoadIntent(person_name=_resolve_person(text, ctx))
 
         if "отпуск" in low or low.startswith("vacation"):
@@ -98,7 +104,16 @@ class BasicIntentParser:
                     deadline=_parse_date(text, ctx.today),
                 )
 
-        return ClarifyIntent(question="Не понял команду — переформулируй.")
+        return ClarifyIntent(
+            question=(
+                "Не понял. Умею:\n"
+                "/load — загрузка команды\n"
+                "/task <текст> — новый проект\n"
+                "/whatif — что-если\n"
+                "/confirm — подтвердить план\n"
+                "или напиши «загрузка», «отпуск», «что-если»"
+            )
+        )
 
     def _vacation(self, text: str, ctx: ChatContext) -> Intent:
         person = _resolve_person(text, ctx)
