@@ -59,16 +59,19 @@ def run_migrations(pg_url: str) -> None:
     assert result.returncode == 0, f"Migration failed:\n{result.stderr}"
 
 
-@pytest.fixture(scope="session")
-def db_engine(pg_url: str, run_migrations):
-    """Session-scoped async engine connected to the test database."""
-    engine = create_engine(pg_url)
+@pytest_asyncio.fixture(scope="session")
+async def db_engine(pg_url: str, run_migrations):
+    """Session-scoped async engine with NullPool — each session opens its own connection,
+    preventing asyncpg protocol state from bleeding between tests."""
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+    engine = create_async_engine(pg_url, echo=False, poolclass=NullPool)
     yield engine
-    asyncio.get_event_loop().run_until_complete(engine.dispose())
+    await engine.dispose()
 
 
-@pytest.fixture(scope="session")
-def db_session_factory(db_engine) -> async_sessionmaker[AsyncSession]:
+@pytest_asyncio.fixture(scope="session")
+async def db_session_factory(db_engine) -> async_sessionmaker[AsyncSession]:
     return create_session_factory(db_engine)
 
 

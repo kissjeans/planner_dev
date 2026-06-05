@@ -22,7 +22,7 @@ dependencies = [
     "pydantic>=2.0",
     "pydantic-settings",
     "structlog",
-    "apscheduler>=3.10",
+    "apscheduler>=3.10,<4.0",
     "matplotlib",
     "seaborn",
     "redis[hiredis]",
@@ -63,4 +63,5 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
 testpaths = ["tests"]
