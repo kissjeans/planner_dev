@@ -185,6 +185,26 @@ def test_vacation_unknown_person_still_redirects(client):
     assert r.status_code == 303
 
 
+def test_telegram_login_invalid_signature_returns_401(client):
+    r = client.get("/login/telegram", params={"id": "42", "auth_date": "1", "hash": "bad"})
+    assert r.status_code == 401
+
+
+def test_vacation_with_invalid_uuid_sub_still_works(client):
+    """_actor falls back to uuid4() when JWT sub is not a valid UUID."""
+    token = __import__("planner.web.auth", fromlist=["create_jwt"]).create_jwt(
+        {"sub": "not-a-uuid", "name": "Admin", "is_admin": True}, JWT_SECRET
+    )
+    client.cookies.set(COOKIE_NAME, token)
+    r = client.post(
+        "/team/vacation",
+        data={"person_name": "Айгуль", "day_from": "2026-06-10",
+              "day_to": "2026-06-10", "capacity_h": "0"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+
+
 def test_telegram_login_callback_sets_cookie(client):
     data = {"id": "42", "first_name": "Boss", "auth_date": str(int(time.time()))}
     check = "\n".join(f"{k}={data[k]}" for k in sorted(data))

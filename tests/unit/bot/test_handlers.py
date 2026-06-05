@@ -266,6 +266,27 @@ async def test_edit_callback_returns_prompt():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
+async def test_confirm_callback_plan_not_proposed():
+    from planner.app.confirm_plan import PlanNotProposedError
+
+    pv_id = uuid4()
+    actor_record = PersonRecord(id=uuid4(), name="Admin", is_admin=True)
+
+    class _FakeConfirmUCNotProposed:
+        async def execute(self, plan_version_id: Any, actor: Any) -> None:
+            raise PlanNotProposedError("already committed")
+
+    cb, cb_answers = _callback(f"confirm:{pv_id}")
+    await confirm.handle_confirm(
+        cb,  # type: ignore[arg-type]
+        {"is_admin": True},
+        confirm_uc=_FakeConfirmUCNotProposed(),  # type: ignore[arg-type]
+        actor_record=actor_record,
+    )
+    assert "не найден" in cb_answers.calls[0].lower() or "зафиксирован" in cb_answers.calls[0].lower()
+
+
+@pytest.mark.asyncio
 async def test_vacation_person_not_found_message():
 
     class _RepoNotFound:
