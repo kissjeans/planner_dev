@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import date
 from uuid import UUID
 
-from planner.domain.models import PlanResult
+from planner.domain.models import PlanDiff, PlanResult
 
 NameMap = dict[UUID, str]
 
@@ -67,5 +67,34 @@ def explain_plan(
         lines.append(f"Самая ранняя дата завершения: {_fmt_day(earliest_end)}.")
     elif plan.end_date is not None:
         lines.append(f"Завершение: {_fmt_day(plan.end_date)}.")
+
+    return "\n".join(lines)
+
+
+def explain_diff(
+    diff: PlanDiff,
+    task_names: NameMap,
+    person_names: NameMap,
+) -> str:
+    """Render a what-if ``PlanDiff`` as a short Russian summary (spec 14)."""
+    lines: list[str] = []
+
+    moved = diff.moved_tasks
+    if moved:
+        names = ", ".join(_name(task_names, t, "задача") for t in moved)
+        lines.append(f"Сдвинется задач: {len(moved)} ({names}).")
+    else:
+        lines.append("Сдвигов задач нет.")
+
+    for label, risks in (
+        ("Новые перегрузы", diff.new_overloads),
+        ("Уйдут перегрузы", diff.removed_overloads),
+    ):
+        if risks:
+            lines.append(f"{label}: {len(risks)}.")
+            for r in risks:
+                who = _name(person_names, r.person_id, "—") if r.person_id else "—"
+                day = f" {_fmt_day(r.day)}" if r.day else ""
+                lines.append(f"  – {who}{day}: {r.message}")
 
     return "\n".join(lines)
