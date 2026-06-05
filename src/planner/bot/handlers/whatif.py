@@ -1,27 +1,64 @@
-"""/whatif handler (spec section 8.1).
+"""/whatif handler (spec section 8.1 / 7.2 / 14).
 
-Sprint 4 baseline: parse the what-if intent and echo the interpretation. The
-diff render against a committed plan is wired once the repo lands (Sprint 5).
+Reconstructs a PlanRequest from committed allocations, applies the what-if
+operation, re-solves, and renders the diff. Falls back to intent echo when
+no committed plan or solver is available.
 """
 
 from __future__ import annotations
 
 from datetime import date
+from uuid import UUID
 
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from planner.app.ports import RepoPort
+from planner.app.what_if import WhatIfUseCase
+from planner.bot.replies.plan_explainer import explain_diff
 from planner.domain.intent import WhatIfIntent
+from planner.domain.models import PlanRequest, Task
 from planner.domain.permissions import can_execute
+from planner.domain.solver.ports import SolverPort
 from planner.infra.llm.ports import ChatContext, IntentParserPort
 
 router = Router(name="whatif")
 
 
+async def _base_request(repo: RepoPort, solver: SolverPort) -> PlanRequest | None:
+    """Reconstruct a PlanRequest from committed plan allocations (spec 7.2 step 1)."""
+    people = await repo.get_solver_people()
+    if not people:
+        return None
+    payloads = await repo.list_committed_plans()
+    tasks: list[Task] = []
+    for payload in payloads:
+        for a in payload.get("assignments", []):
+            hours = sum(al["hours"] for al in a.get("allocations", []))
+            tasks.append(
+                Task(
+                    id=UUID(a["task_id"]),
+                    name="task",
+                    duration_hours=max(hours, 1),
+                    allowed_person_ids=(UUID(a["person_id"]),),
+                )
+            )
+    return PlanRequest(
+        people=people,
+        tasks=tuple(tasks),
+        dependencies=(),
+        horizon_start=date.today(),
+    )
+
+
 @router.message(Command("whatif"))
 async def handle_whatif(
-    message: Message, parser: IntentParserPort, actor: dict
+    message: Message,
+    parser: IntentParserPort,
+    actor: dict,
+    repo: RepoPort | None = None,
+    solver: SolverPort | None = None,
 ) -> None:
     text = (message.text or "").partition(" ")[2].strip()
     if not text:
@@ -36,8 +73,14 @@ async def handle_whatif(
         await message.answer("Только админ может править план.")
         return
 
+    if repo is not None and solver is not None:
+        base_req = await _base_request(repo, solver)
+        if base_req is not None and base_req.tasks:
+            diff = WhatIfUseCase(solver).execute(base_req, intent)
+            summary = explain_diff(diff, {}, {})
+            target = intent.project_title or "—"
+            await message.answer(f"Что-если ({intent.operation}, проект {target}):\n{summary}")
+            return
+
     target = intent.project_title or "—"
-    await message.answer(
-        f"Что-если: {intent.operation}, проект {target}. "
-        "Дифф против зафиксированного плана появится в Спринте 5."
-    )
+    await message.answer(f"Что-если: {intent.operation}, проект {target}.")

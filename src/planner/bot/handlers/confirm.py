@@ -30,8 +30,7 @@ async def handle_confirm(
 
     pv_id = UUID(cb.data.split(":", 1)[1])
     if confirm_uc is None or actor_record is None:
-        # Repo wiring lands in Sprint 5; acknowledge for now.
-        await cb.answer("План подтверждён.")
+        await cb.answer("База данных не подключена.")
         return
 
     try:

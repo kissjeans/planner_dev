@@ -25,11 +25,11 @@ class Settings(BaseSettings):
     """Comma-separated Telegram user IDs allowed to mutate plans (spec section 16)."""
 
     # LLM
-    anthropic_api_key: str
-    """Anthropic API key for Claude models"""
+    anthropic_api_key: str = ""
+    """Anthropic API key for Claude models (optional — falls back to BasicIntentParser)"""
 
-    openai_api_key: str
-    """OpenAI API key for GPT models"""
+    openai_api_key: str = ""
+    """OpenAI API key for Whisper STT (optional — voice messages disabled without it)"""
 
     # Web
     webhook_secret: str = ""

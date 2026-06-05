@@ -5,6 +5,7 @@ from __future__ import annotations
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.redis import RedisStorage
 
+from planner.app.confirm_plan import ConfirmPlanUseCase
 from planner.app.explain_plan import ExplainPlanUseCase
 from planner.app.ports import RepoPort
 from planner.bot.handlers import confirm, load, start, task_router, vacation, whatif
@@ -39,6 +40,11 @@ def build_dispatcher(
     if solver is not None:
         dp["solver"] = solver
     dp["explain_uc"] = ExplainPlanUseCase(None)
+    if repo is not None:
+        dp["confirm_uc"] = ConfirmPlanUseCase(repo)
+    if settings.openai_api_key:
+        from planner.infra.stt.whisper import WhisperSTT
+        dp["stt"] = WhisperSTT(settings.openai_api_key)
 
     errors_mw = ErrorBoundaryMiddleware()
     dp.message.middleware(errors_mw)

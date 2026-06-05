@@ -157,17 +157,16 @@ async def main() -> None:
     engine = create_engine(database_url)
     session_factory = create_session_factory(engine)
 
-    async with session_factory() as session:
-        async with session.begin():
-            people_map = await load_team(session)
-            await load_template(
-                session, "standard", "Стандартный шаблон",
-                SEED_DIR / "tasks_standard.yaml", people_map,
-            )
-            await load_template(
-                session, "lite", "Лайт шаблон",
-                SEED_DIR / "tasks_lite.yaml", people_map,
-            )
+    async with session_factory() as session, session.begin():
+        people_map = await load_team(session)
+        await load_template(
+            session, "standard", "Стандартный шаблон",
+            SEED_DIR / "tasks_standard.yaml", people_map,
+        )
+        await load_template(
+            session, "lite", "Лайт шаблон",
+            SEED_DIR / "tasks_lite.yaml", people_map,
+        )
 
     await engine.dispose()
     print("Seed loaded successfully.")

@@ -31,11 +31,9 @@ class TestSettingsValidation:
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         monkeypatch.setenv("BOT_TOKEN", "test_token")
         monkeypatch.setenv("TEAM_CHAT_ID", "123456789")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
         with pytest.raises(ValidationError):
-            Settings()
+            Settings(_env_file=None)
 
     def test_settings_missing_redis_url_raises_validation_error(self, monkeypatch):
         """Test that missing REDIS_URL raises ValidationError."""
@@ -43,11 +41,9 @@ class TestSettingsValidation:
         monkeypatch.delenv("REDIS_URL", raising=False)
         monkeypatch.setenv("BOT_TOKEN", "test_token")
         monkeypatch.setenv("TEAM_CHAT_ID", "123456789")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
         with pytest.raises(ValidationError):
-            Settings()
+            Settings(_env_file=None)
 
     def test_settings_missing_bot_token_raises_validation_error(self, monkeypatch):
         """Test that missing BOT_TOKEN raises ValidationError."""
@@ -55,11 +51,9 @@ class TestSettingsValidation:
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         monkeypatch.delenv("BOT_TOKEN", raising=False)
         monkeypatch.setenv("TEAM_CHAT_ID", "123456789")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
         with pytest.raises(ValidationError):
-            Settings()
+            Settings(_env_file=None)
 
     def test_settings_missing_team_chat_id_raises_validation_error(self, monkeypatch):
         """Test that missing TEAM_CHAT_ID raises ValidationError."""
@@ -67,37 +61,33 @@ class TestSettingsValidation:
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         monkeypatch.setenv("BOT_TOKEN", "test_token")
         monkeypatch.delenv("TEAM_CHAT_ID", raising=False)
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
         with pytest.raises(ValidationError):
-            Settings()
+            Settings(_env_file=None)
 
-    def test_settings_missing_anthropic_api_key_raises_validation_error(
-        self, monkeypatch
-    ):
-        """Test that missing ANTHROPIC_API_KEY raises ValidationError."""
+    def test_settings_missing_anthropic_api_key_defaults_to_empty(self, monkeypatch):
+        """anthropic_api_key is optional; absent means BasicIntentParser is used."""
         monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost/db")
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         monkeypatch.setenv("BOT_TOKEN", "test_token")
         monkeypatch.setenv("TEAM_CHAT_ID", "123456789")
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
-        with pytest.raises(ValidationError):
-            Settings()
+        s = Settings()
+        assert s.anthropic_api_key == ""
 
-    def test_settings_missing_openai_api_key_raises_validation_error(self, monkeypatch):
-        """Test that missing OPENAI_API_KEY raises ValidationError."""
+    def test_settings_missing_openai_api_key_defaults_to_empty(self, monkeypatch):
+        """openai_api_key is optional; absent means STT/voice is disabled."""
         monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost/db")
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         monkeypatch.setenv("BOT_TOKEN", "test_token")
         monkeypatch.setenv("TEAM_CHAT_ID", "123456789")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
-        with pytest.raises(ValidationError):
-            Settings()
+        s = Settings()
+        assert s.openai_api_key == ""
 
     def test_settings_with_optional_fields_defaults(self, monkeypatch):
         """Test that optional fields have correct default values."""
@@ -105,13 +95,13 @@ class TestSettingsValidation:
         monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
         monkeypatch.setenv("BOT_TOKEN", "test_token")
         monkeypatch.setenv("TEAM_CHAT_ID", "123456789")
-        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("WEBHOOK_SECRET", raising=False)
         monkeypatch.delenv("TIMEZONE", raising=False)
         monkeypatch.delenv("DEBUG", raising=False)
 
-        settings = Settings()
+        settings = Settings(_env_file=None)
 
         assert settings.webhook_secret == ""
         assert settings.timezone == "Europe/Moscow"
