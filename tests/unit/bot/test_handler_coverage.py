@@ -303,3 +303,166 @@ async def test_handle_mention_group_with_mention_responds():
     parser = _FakeParser(intent)
     await handle_mention_or_dm(msg, parser, {"is_admin": False})  # type: ignore[arg-type]
     assert answers.calls
+
+
+# ---------------------------------------------------------------------------
+# _plan_keyboard + full AddProject via _handle_text with repo+solver
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_handle_text_add_project_with_repo_sends_keyboard():
+    from datetime import timedelta
+
+    from planner.app.add_project import ProjectTemplate, TemplateTaskSpec
+    from planner.app.ports import PersonRecord
+    from planner.bot.handlers.task_router import _handle_text
+    from planner.domain.calendar.rules import WeekendCalendar
+    from planner.domain.models import Person
+    from planner.domain.solver.greedy import GreedySolver
+    from tests.unit.app.conftest import FakeRepo
+
+    andrey = Person(id=uuid4(), name="Андрей", capacity_h=8)
+    repo = FakeRepo()
+    repo.solver_people = (andrey,)
+    repo.templates = {
+        "standard": ProjectTemplate(
+            code="standard",
+            tasks=(TemplateTaskSpec(1, "Бриф", 8, (andrey.id,)),),
+        )
+    }
+
+    actor_record = PersonRecord(id=uuid4(), name="Менеджер", is_admin=True)
+    solver = GreedySolver(WeekendCalendar())
+    intent = AddProjectIntent(
+        title="Тест", template_code="standard",
+        deadline=date.today() + timedelta(days=30),
+    )
+
+    keyboards: list[Any] = []
+
+    async def _answer(text: str, reply_markup: Any = None, **kw: Any) -> None:
+        keyboards.append(reply_markup)
+
+    msg = SimpleNamespace(
+        text="/task Тест", answer=_answer,
+        chat=SimpleNamespace(type="private"),
+        reply_to_message=None, bot=None,
+    )
+    parser = _FakeParser(intent)
+    await _handle_text(
+        msg, "Тест", parser, {"is_admin": True},  # type: ignore[arg-type]
+        repo=repo, solver=solver, actor_record=actor_record,
+    )
+    assert keyboards, "expected answer to be called"
+    assert keyboards[0] is not None, "keyboard must be attached to proposed plan"
+
+
+# ---------------------------------------------------------------------------
+# handle_task command (/task <text>)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_handle_task_empty_shows_help():
+    from planner.bot.handlers.task_router import handle_task
+
+    intent = ClarifyIntent(question="Не понял.")
+    msg, answers = _message("/task")
+    parser = _FakeParser(intent)
+    await handle_task(msg, parser, {"is_admin": True})  # type: ignore[arg-type]
+    assert "Напиши" in answers.calls[0]
+
+
+@pytest.mark.asyncio
+async def test_handle_task_with_text_routes_intent():
+    from planner.bot.handlers.task_router import handle_task
+
+    intent = ClarifyIntent(question="Уточни.")
+    msg, answers = _message("/task загрузка")
+    parser = _FakeParser(intent)
+    await handle_task(msg, parser, {"is_admin": True})  # type: ignore[arg-type]
+    assert answers.calls
+
+
+# ---------------------------------------------------------------------------
+# handle_edit_text FSM handler
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_handle_edit_text_routes_and_clears_state():
+    from planner.bot.handlers.task_router import handle_edit_text
+
+    intent = ClarifyIntent(question="Не понял.")
+    msg, answers = _message("правка: lite")
+    parser = _FakeParser(intent)
+    state = SimpleNamespace(clear=AsyncMock())
+    await handle_edit_text(
+        msg, state, parser, {"is_admin": True}  # type: ignore[arg-type]
+    )
+    assert answers.calls
+    assert state.clear.called
+
+
+@pytest.mark.asyncio
+async def test_handle_edit_text_empty_message_ignored():
+    from planner.bot.handlers.task_router import handle_edit_text
+
+    intent = ClarifyIntent(question="X")
+    msg, answers = _message("")
+    parser = _FakeParser(intent)
+    state = SimpleNamespace(clear=AsyncMock())
+    await handle_edit_text(msg, state, parser, {"is_admin": True})  # type: ignore[arg-type]
+    assert not answers.calls
+    assert not state.clear.called
+
+
+# ---------------------------------------------------------------------------
+# handle_voice with STT
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_handle_voice_with_stt_transcribes_and_routes():
+    from planner.bot.handlers.task_router import handle_voice
+
+    intent = ClarifyIntent(question="Не понял.")
+    msg, answers = _message()
+    parser = _FakeParser(intent)
+
+    audio_bytes = b"fake-audio"
+    audio_buf = SimpleNamespace(read=lambda: audio_bytes)
+    file_obj = SimpleNamespace(file_path="voice/file.ogg")
+    bot = SimpleNamespace(
+        get_file=AsyncMock(return_value=file_obj),
+        download_file=AsyncMock(return_value=audio_buf),
+    )
+    msg.voice = SimpleNamespace(file_id="abc")
+    msg.bot = bot
+
+    stt = SimpleNamespace(transcribe=AsyncMock(return_value="загрузка команды"))
+    await handle_voice(
+        msg, parser, {"is_admin": False}, stt=stt  # type: ignore[arg-type]
+    )
+    assert answers.calls
+
+
+@pytest.mark.asyncio
+async def test_handle_voice_stt_returns_empty_string():
+    from planner.bot.handlers.task_router import handle_voice
+
+    intent = ClarifyIntent(question="X")
+    msg, answers = _message()
+    parser = _FakeParser(intent)
+
+    audio_buf = SimpleNamespace(read=lambda: b"")
+    file_obj = SimpleNamespace(file_path="voice/f.ogg")
+    bot = SimpleNamespace(
+        get_file=AsyncMock(return_value=file_obj),
+        download_file=AsyncMock(return_value=audio_buf),
+    )
+    msg.voice = SimpleNamespace(file_id="abc")
+    msg.bot = bot
+
+    stt = SimpleNamespace(transcribe=AsyncMock(return_value=""))
+    await handle_voice(
+        msg, parser, {"is_admin": False}, stt=stt  # type: ignore[arg-type]
+    )
+    assert "распознать" in answers.calls[0]
