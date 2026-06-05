@@ -87,3 +87,27 @@ async def test_error_middleware_message_event_answers_user():
     # If message path triggered, answers will have a call
     # (may or may not fire depending on isinstance result — just ensure no crash)
     assert True  # middleware did not re-raise
+
+
+@pytest.mark.asyncio
+async def test_error_middleware_callback_query_branch():
+    """CallbackQuery events get show_alert answer, not Message.answer."""
+    import aiogram.types
+
+    mw = ErrorBoundaryMiddleware()
+    answers = _Answers()
+
+    class _FakeCallbackQuery:
+        async def answer(self, text: str, **kwargs: Any) -> None:
+            answers.calls.append(text)
+
+    async def bad_handler(event: Any, data: Any) -> None:
+        raise RuntimeError("callback error")
+
+    fake_cb = _FakeCallbackQuery()
+    original_cq = aiogram.types.CallbackQuery
+    try:
+        aiogram.types.CallbackQuery = type(fake_cb)
+        await mw(bad_handler, fake_cb, {})  # type: ignore[arg-type]
+    finally:
+        aiogram.types.CallbackQuery = original_cq

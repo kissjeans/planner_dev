@@ -79,3 +79,32 @@ def test_unrecognized_is_clarify():
 
 def test_confirm():
     assert P.parse_sync("ок", CTX).kind == "confirm"
+
+
+def test_task_query_keywords():
+    assert P.parse_sync("какие задачи сейчас в работе", CTX).kind == "load"
+    assert P.parse_sync("что сейчас идёт", CTX).kind == "load"
+    assert P.parse_sync("текущий статус", CTX).kind == "load"
+
+
+def test_dm_date_format():
+    i = P.parse_sync('создать проект "Дельта" дедлайн 20 июня', CTX)
+    assert i.deadline == date(2026, 6, 20)
+
+
+def test_unknown_month_returns_clarify():
+    # "зелёного" starts with "з" — no Russian month stem matches
+    i = P.parse_sync("отпуск Айгуль 10-12 зелёного", CTX)
+    assert i.kind == "clarify"
+
+
+def test_what_if_drop_project():
+    i = P.parse_sync('что-если удали проект "Альфа"', CTX)
+    assert i.kind == "what_if"
+    assert i.operation == "drop_project"
+
+
+def test_what_if_add_person():
+    i = P.parse_sync("что-если +1 человек", CTX)
+    assert i.kind == "what_if"
+    assert i.operation == "add_person"
