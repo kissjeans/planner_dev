@@ -7,12 +7,16 @@ from uuid import uuid4
 
 import pytest
 
-from planner.app.add_project import ProjectTemplate, TemplateTaskSpec
+from planner.app.add_project import (
+    ProjectTemplate,
+    TemplateTaskSpec,
+    serialize_plan,
+)
 from planner.app.ports import PersonRecord
 from planner.bot.handlers.task_router import build_add_project_reply
 from planner.domain.calendar.rules import WeekendCalendar
 from planner.domain.intent import AddProjectIntent
-from planner.domain.models import Person
+from planner.domain.models import Assignment, DayAllocation, Person, PlanResult
 from planner.domain.solver.greedy import GreedySolver
 from tests.unit.app.conftest import FakeRepo
 
@@ -57,6 +61,40 @@ async def test_reply_contains_project_and_tasks():
     assert "Дизайн → Андрей" in reply
     # A proposed plan version was persisted.
     assert any(pv.status == "proposed" for pv in repo.plan_versions.values())
+
+
+@pytest.mark.asyncio
+async def test_committed_allocations_block_capacity():
+    repo, andrey = _setup_repo()
+    # Andrey is already fully booked (8h) on Mon 2026-06-08 by a committed plan.
+    booked_day = date(2026, 6, 8)
+    committed = PlanResult(
+        assignments=(
+            Assignment(
+                task_id=uuid4(),
+                person_id=andrey.id,
+                start_date=booked_day,
+                end_date=booked_day,
+                allocations=(DayAllocation(andrey.id, booked_day, 8),),
+            ),
+        )
+    )
+    repo.committed_payloads = [serialize_plan(committed)]
+
+    intent = AddProjectIntent(
+        title="Альфа", template_code="standard", deadline=TODAY + timedelta(days=30)
+    )
+    await build_add_project_reply(
+        intent,
+        repo=repo,
+        solver=GreedySolver(WeekendCalendar()),
+        actor_record=_admin(),
+        today=TODAY,
+    )
+    # The new project's first task cannot land on the fully-booked Monday.
+    pv = next(iter(repo.plan_versions.values()))
+    starts = {a["start_date"] for a in pv.payload["assignments"]}
+    assert booked_day.isoformat() not in starts
 
 
 @pytest.mark.asyncio

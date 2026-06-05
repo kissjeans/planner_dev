@@ -13,7 +13,11 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
-from planner.app.add_project import AddProjectUseCase, InvalidProjectError
+from planner.app.add_project import (
+    AddProjectUseCase,
+    InvalidProjectError,
+    deserialize_allocations,
+)
 from planner.app.explain_plan import ExplainPlanUseCase
 from planner.app.ports import PersonRecord, RepoPort
 from planner.domain.intent import AddProjectIntent, ClarifyIntent, Intent
@@ -42,10 +46,21 @@ async def build_add_project_reply(
     if not people:
         return "В команде нет активных людей — некому планировать."
 
+    # Occupy capacity already taken by committed plans so the new project does
+    # not double-book people (spec section 9, hard capacity constraint).
+    existing: list = []
+    for payload in await repo.list_committed_plans():
+        existing.extend(deserialize_allocations(payload))
+
     uc = AddProjectUseCase(repo, solver)
     try:
         result = await uc.execute(
-            intent, actor_record, tuple(people), template, today=today
+            intent,
+            actor_record,
+            tuple(people),
+            template,
+            today=today,
+            existing_allocations=tuple(existing),
         )
     except InvalidProjectError as exc:
         return f"Не могу создать проект: {exc}"
