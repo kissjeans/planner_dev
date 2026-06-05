@@ -200,12 +200,25 @@ async def handle_mention_or_dm(
 ) -> None:
     """Handle @mention in groups and direct messages in private chats (spec 8.1).
 
-    In privacy mode ON (BotFather), the bot only receives group messages that
-    mention it or reply to it — so this handler fires only on relevant updates.
-    Strips the leading @username prefix when present.
+    In groups, only react when the bot is directly @mentioned or the message
+    is a reply to the bot. In private chats, always respond.
     """
     raw = message.text or ""
-    text = raw.partition(" ")[2].strip() if raw.startswith("@") else raw.strip()
+
+    if message.chat.type != "private":
+        # Group / supergroup: only respond when bot is @mentioned or replied-to.
+        bot_info = await message.bot.get_me()
+        bot_mention = f"@{bot_info.username}".lower()
+        is_reply_to_bot = (
+            message.reply_to_message is not None
+            and message.reply_to_message.from_user is not None
+            and message.reply_to_message.from_user.id == bot_info.id
+        )
+        if bot_mention not in raw.lower() and not is_reply_to_bot:
+            return
+
+    # Strip leading @botname if present so parser gets clean text.
+    text = raw.partition(" ")[2].strip() if raw.lower().startswith("@") else raw.strip()
     if not text:
         return
     await _handle_text(
