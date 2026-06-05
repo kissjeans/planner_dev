@@ -154,6 +154,37 @@ def test_edit_task_redirects_and_records_update(client):
     assert client.repo.task_updates[0][1] == date(2026, 6, 10)  # type: ignore[attr-defined]
 
 
+def test_login_page_renders(client):
+    r = client.get("/login")
+    assert r.status_code == 200
+
+
+def test_logout_clears_cookie(client):
+    _auth(client)
+    r = client.get("/logout", follow_redirects=False)
+    assert r.status_code == 303
+    assert "planner_jwt" not in r.cookies or r.cookies.get("planner_jwt") == ""
+
+
+def test_team_list_renders(client):
+    _auth(client)
+    r = client.get("/team")
+    assert r.status_code == 200
+    assert "Айгуль" in r.text
+
+
+def test_vacation_unknown_person_still_redirects(client):
+    """PersonNotFoundError is suppressed — redirect happens anyway."""
+    _auth(client, is_admin=True)
+    r = client.post(
+        "/team/vacation",
+        data={"person_name": "Призрак", "day_from": "2026-06-10",
+              "day_to": "2026-06-10", "capacity_h": "0"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+
+
 def test_telegram_login_callback_sets_cookie(client):
     data = {"id": "42", "first_name": "Boss", "auth_date": str(int(time.time()))}
     check = "\n".join(f"{k}={data[k]}" for k in sorted(data))

@@ -259,3 +259,31 @@ async def test_edit_callback_returns_prompt():
     await confirm.handle_edit(cb, state)  # type: ignore[arg-type]
     assert state.set_state.called
     assert len(cb_answers.calls) >= 1
+
+
+# ---------------------------------------------------------------------------
+# vacation — PersonNotFoundError + PermissionError paths (lines 56-61)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_vacation_person_not_found_message():
+
+    class _RepoNotFound:
+        async def get_person_by_name(self, name: str):
+            return None
+        async def upsert_day_override(self, *a): pass
+        async def add_audit(self, *a): pass
+
+    intent = VacationIntent(
+        person_name="Призрак",
+        day_from=date(2026, 6, 10),
+        day_to=date(2026, 6, 10),
+    )
+    actor_record = PersonRecord(id=uuid4(), name="Admin", is_admin=True)
+    msg, answers = _message("/vacation Призрак 10 июня")
+    parser = _FakeParser(intent)
+    await vacation.handle_vacation(
+        msg, parser, {"is_admin": True},  # type: ignore[arg-type]
+        repo=_RepoNotFound(), actor_record=actor_record,  # type: ignore[arg-type]
+    )
+    assert "не найден" in answers.calls[0]
