@@ -26,6 +26,7 @@ from planner.infra.db.models import (
     PlanVersion,
     Project,
     Task,
+    Template,
 )
 
 
@@ -75,6 +76,33 @@ class SqlAlchemyRepo:
                 )
             )
         return PlanVersionRecord(pv_id, project_id, status, payload)
+
+    async def create_project(
+        self,
+        *,
+        title: str,
+        template_code: str,
+        deadline: date | None,
+        brief_return_date: date | None,
+        actor_id: UUID | None,
+    ) -> ProjectRecord:
+        project_id = uuid4()
+        async with self._sf() as s, s.begin():
+            template_id = await s.scalar(
+                select(Template.id).where(Template.code == template_code)
+            )
+            s.add(
+                Project(
+                    id=project_id,
+                    title=title,
+                    template_id=template_id,
+                    deadline=deadline,
+                    brief_return_date=brief_return_date,
+                    status="planning",
+                    created_by=actor_id,
+                )
+            )
+        return ProjectRecord(project_id, title, "planning", deadline)
 
     async def get_committed_plan(self, project_id: UUID) -> PlanVersionRecord | None:
         async with self._sf() as s:

@@ -58,6 +58,16 @@ class RepoPort(Protocol):
 
     async def get_committed_plan(self, project_id: UUID) -> PlanVersionRecord | None: ...
 
+    async def create_project(
+        self,
+        *,
+        title: str,
+        template_code: str,
+        deadline: date | None,
+        brief_return_date: date | None,
+        actor_id: UUID | None,
+    ) -> ProjectRecord: ...
+
     async def upsert_day_override(
         self, person_id: UUID, day: date, capacity_h: int, reason: str | None
     ) -> None: ...

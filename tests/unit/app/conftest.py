@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from uuid import UUID, uuid4
 
-from planner.app.ports import PersonRecord, PlanVersionRecord
+from planner.app.ports import PersonRecord, PlanVersionRecord, ProjectRecord
 
 
 class FakeRepo:
@@ -14,8 +14,16 @@ class FakeRepo:
     def __init__(self) -> None:
         self.people: dict[str, PersonRecord] = {}
         self.plan_versions: dict[UUID, PlanVersionRecord] = {}
+        self.projects: dict[UUID, ProjectRecord] = {}
         self.overrides: list[tuple[UUID, date, int, str | None]] = []
         self.audits: list[tuple] = []
+
+    async def create_project(
+        self, *, title, template_code, deadline, brief_return_date, actor_id
+    ) -> ProjectRecord:
+        rec = ProjectRecord(uuid4(), title, "planning", deadline)
+        self.projects[rec.id] = rec
+        return rec
 
     async def get_person_by_name(self, name: str) -> PersonRecord | None:
         return self.people.get(name)

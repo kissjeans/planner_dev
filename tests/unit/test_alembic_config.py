@@ -81,11 +81,11 @@ def test_base_metadata_has_all_11_tables():
 
 
 def test_base_metadata_table_count():
-    """Sanity-check: exactly 11 tables are registered."""
+    """Sanity-check: exactly 12 tables are registered (11 domain + audit_log)."""
     import planner.infra.db.models  # noqa: F401
     from planner.infra.db.base import Base
 
-    assert len(Base.metadata.tables) == 11
+    assert len(Base.metadata.tables) == 12
 
 
 # ---------------------------------------------------------------------------
