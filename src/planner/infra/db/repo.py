@@ -148,6 +148,12 @@ class SqlAlchemyRepo:
             if end is not None:
                 t.end_date = end
 
+    async def set_task_status(self, task_id: UUID, status: str) -> None:
+        async with self._sf() as s, s.begin():
+            t = await s.get(Task, task_id)
+            if t is not None:
+                t.status = status
+
     async def add_audit(
         self, actor_id, action, entity_type, entity_id, payload
     ) -> None:

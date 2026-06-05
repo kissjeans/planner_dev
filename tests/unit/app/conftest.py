@@ -16,7 +16,11 @@ class FakeRepo:
         self.plan_versions: dict[UUID, PlanVersionRecord] = {}
         self.projects: dict[UUID, ProjectRecord] = {}
         self.overrides: list[tuple[UUID, date, int, str | None]] = []
+        self.task_statuses: dict[UUID, str] = {}
         self.audits: list[tuple] = []
+
+    async def set_task_status(self, task_id: UUID, status: str) -> None:
+        self.task_statuses[task_id] = status
 
     async def create_project(
         self, *, title, template_code, deadline, brief_return_date, actor_id
