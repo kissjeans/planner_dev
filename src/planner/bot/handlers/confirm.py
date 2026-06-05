@@ -5,6 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from aiogram import F, Router
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 
 from planner.app.confirm_plan import (
@@ -13,6 +14,7 @@ from planner.app.confirm_plan import (
     PlanNotProposedError,
 )
 from planner.app.ports import PersonRecord
+from planner.bot.states import PlanEditState
 
 router = Router(name="confirm")
 
@@ -41,6 +43,13 @@ async def handle_confirm(
 
 
 @router.callback_query(F.data.startswith("edit:"))
-async def handle_edit(cb: CallbackQuery) -> None:
-    # Returns the user to the FSM edit loop (spec flow step 14).
-    await cb.answer("Опиши правку текстом — соберу новый предложенный план.")
+async def handle_edit(cb: CallbackQuery, state: FSMContext) -> None:
+    """Enter FSM edit loop (spec flow step 14): store plan_version_id, await edit text."""
+    pv_id = cb.data.split(":", 1)[1]
+    await state.set_state(PlanEditState.waiting)
+    await state.update_data(pending_pv_id=pv_id)
+    await cb.answer()
+    await cb.message.answer(
+        "Опиши правку — переформулируй запрос или напиши «что-если» операцию. "
+        "Как будешь готов подтвердить — напиши «ок»."
+    )

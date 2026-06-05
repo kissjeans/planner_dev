@@ -245,6 +245,17 @@ async def test_confirm_callback_with_repo_calls_use_case():
 
 @pytest.mark.asyncio
 async def test_edit_callback_returns_prompt():
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
     cb, cb_answers = _callback("edit:some-id")
-    await confirm.handle_edit(cb)  # type: ignore[arg-type]
-    assert len(cb_answers.calls) == 1
+    msg = SimpleNamespace(answer=cb_answers.answer)
+    cb.message = msg  # type: ignore[attr-defined]
+
+    state = SimpleNamespace(
+        set_state=AsyncMock(),
+        update_data=AsyncMock(),
+    )
+    await confirm.handle_edit(cb, state)  # type: ignore[arg-type]
+    assert state.set_state.called
+    assert len(cb_answers.calls) >= 1

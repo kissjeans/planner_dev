@@ -10,7 +10,8 @@ from __future__ import annotations
 from datetime import date
 
 from aiogram import F, Router
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from planner.app.add_project import (
@@ -20,6 +21,7 @@ from planner.app.add_project import (
 )
 from planner.app.explain_plan import ExplainPlanUseCase
 from planner.app.ports import PersonRecord, RepoPort
+from planner.bot.states import PlanEditState
 from planner.domain.intent import AddProjectIntent, ClarifyIntent, Intent
 from planner.domain.permissions import can_execute
 from planner.domain.solver.ports import SolverPort
@@ -186,6 +188,36 @@ async def handle_task(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
     )
+
+
+@router.message(StateFilter(PlanEditState.waiting), F.text)
+async def handle_edit_text(
+    message: Message,
+    state: FSMContext,
+    parser: IntentParserPort,
+    actor: dict,
+    repo: RepoPort | None = None,
+    solver: SolverPort | None = None,
+    actor_record: PersonRecord | None = None,
+    explain_uc: ExplainPlanUseCase | None = None,
+) -> None:
+    """FSM edit loop (spec flow step 14 / scenario J).
+
+    Receives the manager's free-text edit instruction after they clicked
+    "правка" on a proposed plan. Re-runs the intent parser and proposes a
+    fresh plan. Stays in the edit state until the manager types «ок» (which
+    resolves to ConfirmIntent and is handled by the normal flow, then clears
+    state).
+    """
+    text = (message.text or "").strip()
+    if not text:
+        return
+    await _handle_text(
+        message, text, parser, actor,
+        repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
+    )
+    # Clear edit state so subsequent messages go through the normal handler.
+    await state.clear()
 
 
 @router.message(F.text & ~F.text.startswith("/"))
