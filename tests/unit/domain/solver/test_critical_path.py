@@ -36,3 +36,13 @@ def test_independent_tasks_critical_path_is_one_day():
     p = Person(id=uuid4(), name="P", capacity_h=8)
     tasks = [_task(p.id, 8, f"t{i}") for i in range(3)]
     assert _end([p], tasks, []) == nth_working_day(CAL, START, 1)
+
+
+def test_empty_task_list_returns_first_working_day():
+    """max_ef == 0 branch (line 53): no tasks → returns first working day."""
+    from planner.domain.solver.critical_path import critical_path_end
+    p = Person(id=uuid4(), name="P", capacity_h=8)
+    req = PlanRequest(people=(p,), tasks=(), dependencies=(), horizon_start=START)
+    result = critical_path_end(req, START, CAL)
+    from planner.domain.calendar.rules import first_working_day
+    assert result == first_working_day(CAL, START)
