@@ -466,3 +466,28 @@ async def test_handle_voice_stt_returns_empty_string():
         msg, parser, {"is_admin": False}, stt=stt  # type: ignore[arg-type]
     )
     assert "распознать" in answers.calls[0]
+
+
+@pytest.mark.asyncio
+async def test_handle_voice_no_stt_replies_unsupported():
+    """task_router.py:166-167 — stt is None → early return with hint."""
+    from planner.bot.handlers.task_router import handle_voice
+    intent = ClarifyIntent(question="X")
+    msg, answers = _message()
+    msg.voice = SimpleNamespace(file_id="abc")
+    parser = _FakeParser(intent)
+    await handle_voice(msg, parser, {"is_admin": False})  # stt defaults to None
+    assert "напиши текстом" in answers.calls[0]
+
+
+@pytest.mark.asyncio
+async def test_handle_mention_only_botname_no_text_ignored():
+    """task_router.py:263 — message is '@bot' with nothing after → return."""
+    from planner.bot.handlers.task_router import handle_mention_or_dm
+    intent = ClarifyIntent(question="X")
+    msg, answers = _message()
+    msg.text = "@plannerbot"  # stripped → empty text
+    msg.chat = SimpleNamespace(type="private")
+    parser = _FakeParser(intent)
+    await handle_mention_or_dm(msg, parser, {"is_admin": False})  # type: ignore[arg-type]
+    assert len(answers.calls) == 0  # no reply
