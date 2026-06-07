@@ -15,7 +15,9 @@ from planner.infra.db.models import (
     Project,
     Task,
     Template,
+    TemplateDependency,
     TemplateTask,
+    TemplateTaskAssignee,
 )
 from planner.infra.db.repo import SqlAlchemyRepo
 
@@ -282,6 +284,47 @@ async def test_get_project_template_found(repo, template):
     assert len(result.tasks) == 1
     assert result.tasks[0].name == "Task A"
     assert result.tasks[0].duration_hours == 8
+
+
+@pytest.mark.asyncio
+async def test_get_project_template_with_assignees_and_deps(
+    repo, person, db_session_factory
+):
+    """repo.py:243,251-253 — template with assignee + dep rows are included."""
+    tmpl_id, ta_id, tb_id = uuid4(), uuid4(), uuid4()
+    async with db_session_factory() as s, s.begin():
+        s.add(Template(id=tmpl_id, code="test_tmpl_deps", name="Deps Template"))
+    async with db_session_factory() as s, s.begin():
+        s.add(TemplateTask(id=ta_id, template_id=tmpl_id, ord=1, name="A", duration_hours=8))
+        s.add(TemplateTask(id=tb_id, template_id=tmpl_id, ord=2, name="B", duration_hours=4))
+    async with db_session_factory() as s, s.begin():
+        s.add(TemplateTaskAssignee(template_task_id=ta_id, person_id=person, strictness="A"))
+        s.add(TemplateDependency(template_task_id=tb_id, depends_on_id=ta_id, link_type="FS"))
+    try:
+        result = await repo.get_project_template("test_tmpl_deps")
+        assert result is not None
+        assert len(result.tasks) == 2
+        task_a = next(t for t in result.tasks if t.name == "A")
+        assert person in task_a.allowed_person_ids
+        task_b = next(t for t in result.tasks if t.name == "B")
+        assert len(task_b.depends_on_ords) == 1
+        assert task_b.depends_on_ords[0] == 1  # ord of task A
+    finally:
+        async with db_session_factory() as s, s.begin():
+            await s.execute(
+                text("DELETE FROM template_dependencies WHERE template_task_id IN (:a,:b)"),
+                {"a": tb_id, "b": ta_id},
+            )
+            await s.execute(
+                text("DELETE FROM template_task_assignees WHERE template_task_id = :id"),
+                {"id": ta_id},
+            )
+            await s.execute(
+                text("DELETE FROM template_tasks WHERE template_id = :id"), {"id": tmpl_id}
+            )
+            await s.execute(
+                text("DELETE FROM templates WHERE id = :id"), {"id": tmpl_id}
+            )
 
 
 # ---------------------------------------------------------------------------
