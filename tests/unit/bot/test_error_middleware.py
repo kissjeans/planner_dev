@@ -90,24 +90,54 @@ async def test_error_middleware_message_event_answers_user():
 
 
 @pytest.mark.asyncio
-async def test_error_middleware_callback_query_branch():
-    """CallbackQuery events get show_alert answer, not Message.answer."""
-    import aiogram.types
+async def test_error_middleware_message_branch_via_patch():
+    """errors.py:36 — patch module-level Message so isinstance passes."""
+    import planner.bot.middlewares.errors as errors_mod
 
     mw = ErrorBoundaryMiddleware()
     answers = _Answers()
 
-    class _FakeCallbackQuery:
-        async def answer(self, text: str, **kwargs: Any) -> None:
+    class _FakeMsg:
+        async def answer(self, text: str, **kw: Any) -> None:
             answers.calls.append(text)
 
     async def bad_handler(event: Any, data: Any) -> None:
-        raise RuntimeError("callback error")
+        raise RuntimeError("boom")
 
-    fake_cb = _FakeCallbackQuery()
-    original_cq = aiogram.types.CallbackQuery
+    fake = _FakeMsg()
+    original = errors_mod.Message
     try:
-        aiogram.types.CallbackQuery = type(fake_cb)
-        await mw(bad_handler, fake_cb, {})  # type: ignore[arg-type]
+        errors_mod.Message = type(fake)  # type: ignore[assignment]
+        await mw(bad_handler, fake, {})  # type: ignore[arg-type]
     finally:
-        aiogram.types.CallbackQuery = original_cq
+        errors_mod.Message = original
+    assert len(answers.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_error_middleware_callback_query_branch_via_patch():
+    """errors.py:38 — patch module-level CallbackQuery so isinstance passes."""
+    import planner.bot.middlewares.errors as errors_mod
+
+    mw = ErrorBoundaryMiddleware()
+    answers = _Answers()
+
+    class _FakeCB:
+        async def answer(self, text: str, **kw: Any) -> None:
+            answers.calls.append((text, kw))
+
+    async def bad_handler(event: Any, data: Any) -> None:
+        raise RuntimeError("cb boom")
+
+    fake = _FakeCB()
+    original_msg = errors_mod.Message
+    original_cq = errors_mod.CallbackQuery
+    try:
+        errors_mod.Message = type(None)       # make Message check fail
+        errors_mod.CallbackQuery = type(fake)  # type: ignore[assignment]
+        await mw(bad_handler, fake, {})  # type: ignore[arg-type]
+    finally:
+        errors_mod.Message = original_msg
+        errors_mod.CallbackQuery = original_cq
+    assert len(answers.calls) == 1
+    assert answers.calls[0][1].get("show_alert") is True
