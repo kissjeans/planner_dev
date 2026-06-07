@@ -110,13 +110,25 @@ def test_what_if_add_person():
     assert i.operation == "add_person"
 
 
+def test_parse_date_ddmm_no_year():
+    """_DDMM path lines 41-42: '20.06' without year uses today.year."""
+    result = _parse_date("дедлайн 20.06", date(2026, 6, 4))
+    assert result == date(2026, 6, 20)
+
+
+def test_parse_date_ddmm_with_year():
+    """_DDMM path with explicit year: '20.06.2027'."""
+    result = _parse_date("дедлайн 20.06.2027", date(2026, 6, 4))
+    assert result == date(2027, 6, 20)
+
+
 def test_parse_date_dm_format():
-    """Direct test of _parse_date DM path (lines 41-42): '20 июня' format."""
+    """_DM path: '20 июня' format."""
     result = _parse_date("дедлайн 20 июня", date(2026, 6, 4))
     assert result == date(2026, 6, 20)
 
 
 def test_parse_date_dm_unknown_month_returns_none():
-    """_DM matches but _month_num returns None → _parse_date returns None."""
+    """_DM matches but _month_num returns None → returns None."""
     result = _parse_date("срок 15 зелёного", date(2026, 6, 4))
     assert result is None
