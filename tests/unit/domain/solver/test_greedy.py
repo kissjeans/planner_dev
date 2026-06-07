@@ -139,3 +139,28 @@ def test_executor_binding_respected():
     t = _task([b.id])  # only B allowed, even though A is free
     res = _solve([a, b], [t])
     assert res.by_task()[t.id].person_id == b.id
+
+
+def test_unassignable_predecessor_skipped_in_earliest_start():
+    """greedy.py:103 — predecessor has no allowed person → skipped, successor still scheduled."""
+    p = _person()
+    no_one_id = uuid4()  # person not in team
+    t_blocker = _task([no_one_id])      # unassignable — skipped by solver
+    t_follow = _task([p.id])
+    dep = Dependency(task_id=t_follow.id, depends_on_id=t_blocker.id, link_type="FS")
+    res = _solve([p], [t_blocker, t_follow], [dep])
+    # t_follow should still be scheduled; t_blocker absent from assignments
+    assert res.by_task().get(t_follow.id) is not None
+
+
+def test_splittable_horizon_overload():
+    """greedy.py:157-158 — horizon saturated, remainder dumped on start day."""
+    from planner.domain.solver.greedy import CapacityIndex, _allocate_split
+
+    p = _person(cap=8)
+    t = _task([p.id], hours=16, splittable=True)
+    # horizon_limit == START means loop runs 0 iterations → remaining > 0
+    horizon_limit = START
+    idx = CapacityIndex((p,), CAL, (), ())
+    allocs, start, end = _allocate_split(t, p, START, CAL, idx, horizon_limit)
+    assert len(allocs) >= 1  # overload alloc dumped on start day
