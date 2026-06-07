@@ -47,6 +47,31 @@ def test_build_user_message_empty_context():
 
 
 # ---------------------------------------------------------------------------
+# ClaudeIntentParser — __init__ constructor (lines 29-34)
+# ---------------------------------------------------------------------------
+
+def test_constructor_builds_client():
+    """ClaudeIntentParser.__init__ wires up instructor + anthropic clients."""
+    with patch("instructor.from_anthropic") as mock_instr, \
+         patch("anthropic.AsyncAnthropic") as mock_anth:
+        mock_instr.return_value = MagicMock()
+        mock_anth.return_value = MagicMock()
+        from planner.infra.llm.claude import ClaudeIntentParser
+        parser = ClaudeIntentParser(api_key="sk-test-key")
+    assert mock_anth.called
+    assert mock_instr.called
+    assert isinstance(parser._fallback, BasicIntentParser)
+
+
+def test_constructor_accepts_custom_fallback():
+    with patch("instructor.from_anthropic"), patch("anthropic.AsyncAnthropic"):
+        from planner.infra.llm.claude import ClaudeIntentParser
+        custom = BasicIntentParser()
+        parser = ClaudeIntentParser(api_key="sk-x", fallback=custom)
+    assert parser._fallback is custom
+
+
+# ---------------------------------------------------------------------------
 # ClaudeIntentParser — parse() success path
 # ---------------------------------------------------------------------------
 
