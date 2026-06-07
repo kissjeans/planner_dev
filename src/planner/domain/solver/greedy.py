@@ -208,6 +208,8 @@ class GreedySolver:
         for tid in order:
             if tid in assignments:
                 continue
+            if tid not in tasks_by_id:
+                continue  # orphaned dep node — not a real task
             task = tasks_by_id[tid]
             earliest = _earliest_start(
                 task, graph, assignments, req.horizon_start, self.calendar
@@ -240,7 +242,7 @@ class GreedySolver:
                     message=f"Plan ends {end_date}, deadline {req.deadline}.",
                 )
             )
-        ordered = tuple(assignments[tid] for tid in order)
+        ordered = tuple(assignments[tid] for tid in order if tid in assignments)
         return PlanResult(assignments=ordered, risks=tuple(risks), end_date=end_date)
 
     def critical_path_end(self, req: PlanRequest, start: date) -> date:

@@ -141,15 +141,14 @@ def test_executor_binding_respected():
     assert res.by_task()[t.id].person_id == b.id
 
 
-def test_unassignable_predecessor_skipped_in_earliest_start():
-    """greedy.py:103 — predecessor has no allowed person → skipped, successor still scheduled."""
+def test_orphaned_dep_node_skipped_and_successor_still_scheduled():
+    """greedy.py:103+211 — dep references task_id not in req.tasks; solver skips orphan
+    node and schedules the successor from horizon_start (a is None → continue)."""
     p = _person()
-    no_one_id = uuid4()  # person not in team
-    t_blocker = _task([no_one_id])      # unassignable — skipped by solver
+    orphan_id = uuid4()  # a task ID referenced in a dep but NOT in req.tasks
     t_follow = _task([p.id])
-    dep = Dependency(task_id=t_follow.id, depends_on_id=t_blocker.id, link_type="FS")
-    res = _solve([p], [t_blocker, t_follow], [dep])
-    # t_follow should still be scheduled; t_blocker absent from assignments
+    dep = Dependency(task_id=t_follow.id, depends_on_id=orphan_id, link_type="FS")
+    res = _solve([p], [t_follow], [dep])
     assert res.by_task().get(t_follow.id) is not None
 
 
