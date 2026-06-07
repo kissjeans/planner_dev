@@ -185,6 +185,46 @@ def test_vacation_unknown_person_still_redirects(client):
     assert r.status_code == 303
 
 
+def _error_client(exc_type):
+    """App fixture whose repo raises exc_type on list_project_tasks."""
+    from planner.app.confirm_plan import PlanNotFoundError, PlanNotProposedError
+
+    class _ErrorRepo(WebFakeRepo):
+        async def list_project_tasks(self, project_id):
+            raise exc_type("test")
+
+        async def update_task_schedule(self, *a):
+            raise exc_type("test")
+
+    app = create_app(_ErrorRepo(), _settings())
+    return TestClient(app)
+
+
+def test_app_plan_not_found_returns_404():
+    from planner.app.confirm_plan import PlanNotFoundError
+    c = _error_client(PlanNotFoundError)
+    _auth(c)
+    r = c.get(f"/plan/{_PROJECT_ID}")
+    assert r.status_code == 404
+
+
+def test_app_plan_not_proposed_returns_409():
+    from planner.app.confirm_plan import PlanNotProposedError
+    c = _error_client(PlanNotProposedError)
+    _auth(c, is_admin=True)
+    r = c.post(f"/plan/{_PROJECT_ID}/task/{_TASK_ID}/edit",
+               data={"start": "2026-06-10", "end": "2026-06-12"})
+    assert r.status_code == 409
+
+
+def test_app_permission_error_returns_403_via_handler():
+    c = _error_client(PermissionError)
+    _auth(c, is_admin=True)
+    r = c.post(f"/plan/{_PROJECT_ID}/task/{_TASK_ID}/edit",
+               data={"start": "2026-06-10", "end": "2026-06-12"})
+    assert r.status_code == 403
+
+
 def test_telegram_login_invalid_signature_returns_401(client):
     r = client.get("/login/telegram", params={"id": "42", "auth_date": "1", "hash": "bad"})
     assert r.status_code == 401
