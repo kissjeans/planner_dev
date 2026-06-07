@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from planner.infra.llm.basic import BasicIntentParser
+from planner.infra.llm.basic import BasicIntentParser, _parse_date
 from planner.infra.llm.ports import ChatContext
 
 P = BasicIntentParser()
@@ -108,3 +108,15 @@ def test_what_if_add_person():
     i = P.parse_sync("что-если +1 человек", CTX)
     assert i.kind == "what_if"
     assert i.operation == "add_person"
+
+
+def test_parse_date_dm_format():
+    """Direct test of _parse_date DM path (lines 41-42): '20 июня' format."""
+    result = _parse_date("дедлайн 20 июня", date(2026, 6, 4))
+    assert result == date(2026, 6, 20)
+
+
+def test_parse_date_dm_unknown_month_returns_none():
+    """_DM matches but _month_num returns None → _parse_date returns None."""
+    result = _parse_date("срок 15 зелёного", date(2026, 6, 4))
+    assert result is None

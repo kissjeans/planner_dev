@@ -47,3 +47,9 @@ def test_apply_drop_project_empties_tasks():
     req = _base_request()
     out = apply_operation(req, WhatIfIntent(operation="drop_project"))
     assert out.tasks == ()
+
+
+def test_apply_switch_to_lite_is_noop():
+    req = _base_request()
+    out = apply_operation(req, WhatIfIntent(operation="switch_to_lite"))
+    assert out is req

@@ -56,3 +56,16 @@ def test_nth_working_day_counts_inclusive():
     assert nth_working_day(cal, MON, 5) == date(2026, 6, 5)
     # 6th skips the weekend to Monday
     assert nth_working_day(cal, MON, 6) == date(2026, 6, 8)
+
+
+def test_business_days_between_zero_when_reversed():
+    cal = WeekendCalendar()
+    assert cal.business_days_between(MON, MON) == 0
+    assert cal.business_days_between(date(2026, 6, 5), MON) == 0
+
+
+def test_nth_working_day_raises_on_zero():
+    import pytest
+    cal = WeekendCalendar()
+    with pytest.raises(ValueError, match="n must be >= 1"):
+        nth_working_day(cal, MON, 0)

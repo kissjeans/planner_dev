@@ -287,6 +287,34 @@ async def test_confirm_callback_plan_not_proposed():
 
 
 @pytest.mark.asyncio
+async def test_vacation_permission_error_message():
+
+    class _RepoPermError:
+        async def get_person_by_name(self, name: str):
+            from planner.app.ports import PersonRecord
+            return PersonRecord(id=uuid4(), name=name, is_admin=False)
+
+        async def upsert_day_override(self, *a):
+            raise PermissionError("не разрешено")
+
+        async def add_audit(self, *a): pass
+
+    intent = VacationIntent(
+        person_name="Айгуль",
+        day_from=date(2026, 6, 10),
+        day_to=date(2026, 6, 10),
+    )
+    actor_record = PersonRecord(id=uuid4(), name="Admin", is_admin=True)
+    msg, answers = _message("/vacation Айгуль 10 июня")
+    parser = _FakeParser(intent)
+    await vacation.handle_vacation(
+        msg, parser, {"is_admin": True},  # type: ignore[arg-type]
+        repo=_RepoPermError(), actor_record=actor_record,  # type: ignore[arg-type]
+    )
+    assert answers.calls
+
+
+@pytest.mark.asyncio
 async def test_vacation_person_not_found_message():
 
     class _RepoNotFound:
