@@ -100,3 +100,22 @@ def test_build_dispatcher_no_openai_no_stt(mock_redis_storage):
     parser = BasicIntentParser()
     dp = build_dispatcher(settings, parser)
     assert "stt" not in dp.workflow_data
+
+
+@pytest.mark.asyncio
+async def test_run_builds_bot_and_polls(mock_redis_storage):
+    """runner.py:67-70 — run() creates Bot + Dispatcher and starts polling."""
+    from unittest.mock import AsyncMock, patch as _patch
+    from planner.bot.runner import run
+
+    settings = _settings(bot_token="123:TEST")
+    with _patch("planner.bot.runner.Bot") as mock_bot_cls, \
+         _patch("planner.bot.runner.build_parser") as mock_parser, \
+         _patch("planner.bot.runner.build_dispatcher") as mock_dp:
+        mock_parser.return_value = BasicIntentParser()
+        mock_dp_inst = MagicMock()
+        mock_dp_inst.start_polling = AsyncMock()
+        mock_dp.return_value = mock_dp_inst
+        await run(settings)
+    mock_bot_cls.assert_called_once_with(token=settings.bot_token)
+    assert mock_dp_inst.start_polling.called
