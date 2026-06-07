@@ -71,5 +71,5 @@ async def main() -> None:
     await asyncio.gather(dp.start_polling(bot), server.serve())
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     asyncio.run(main())
