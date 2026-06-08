@@ -12,8 +12,12 @@ from planner.infra.db.models import (
     DayOverride,
     Dependency,
     Person,
+    PersonRole,
     PlanVersion,
     Project,
+    Role,
+    RoleSkill,
+    Skill,
     Task,
     Template,
     TemplateDependency,
@@ -28,6 +32,22 @@ from planner.infra.db.models import (
 
 def test_person_tablename():
     assert Person.__tablename__ == "people"
+
+
+def test_role_tablename():
+    assert Role.__tablename__ == "roles"
+
+
+def test_skill_tablename():
+    assert Skill.__tablename__ == "skills"
+
+
+def test_role_skill_tablename():
+    assert RoleSkill.__tablename__ == "role_skills"
+
+
+def test_person_role_tablename():
+    assert PersonRole.__tablename__ == "person_roles"
 
 
 def test_template_tablename():
@@ -84,6 +104,32 @@ def test_person_required_columns():
     cols = _column_names(Person)
     assert {"id", "tg_user_id", "name", "role_label", "capacity_h",
             "is_admin", "is_active", "is_external"} <= cols
+
+
+def test_role_required_columns():
+    assert {"id", "name", "description"} <= _column_names(Role)
+
+
+def test_skill_required_columns():
+    assert {"id", "name", "description"} <= _column_names(Skill)
+
+
+def test_role_skill_required_columns():
+    assert {"role_id", "skill_id"} <= _column_names(RoleSkill)
+
+
+def test_person_role_required_columns():
+    assert {"person_id", "role_id"} <= _column_names(PersonRole)
+
+
+def test_role_skill_composite_pk():
+    pk_cols = {c.name for c in inspect(RoleSkill).mapper.persist_selectable.primary_key}
+    assert pk_cols == {"role_id", "skill_id"}
+
+
+def test_person_role_composite_pk():
+    pk_cols = {c.name for c in inspect(PersonRole).mapper.persist_selectable.primary_key}
+    assert pk_cols == {"person_id", "role_id"}
 
 
 def test_template_required_columns():

@@ -19,6 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from planner.infra.db.base import create_engine, create_session_factory
 from planner.infra.db.models import (
     Person,
+    PersonRole,
+    Role,
+    RoleSkill,
+    Skill,
     Template,
     TemplateDependency,
     TemplateTask,
@@ -33,7 +37,7 @@ async def load_team(session: AsyncSession) -> dict[str, object]:
 
     Idempotent: inserts only if name not already present.
     """
-    raw = yaml.safe_load((SEED_DIR / "team.yaml").read_text())
+    raw = yaml.safe_load((SEED_DIR / "team.yaml").read_text(encoding="utf-8"))
 
     result = await session.execute(select(Person))
     existing: dict[str, Person] = {p.name: p for p in result.scalars().all()}
@@ -65,7 +69,7 @@ async def load_template(
     people_map: dict[str, object],
 ) -> None:
     """Load a template and its tasks from YAML. Idempotent by template code."""
-    raw = yaml.safe_load(tasks_yaml.read_text())
+    raw = yaml.safe_load(tasks_yaml.read_text(encoding="utf-8"))
 
     # Upsert template row
     result = await session.execute(select(Template).where(Template.code == code))
@@ -149,6 +153,60 @@ async def load_template(
     await session.flush()
 
 
+async def load_capability(
+    session: AsyncSession, people_map: dict[str, object]
+) -> None:
+    """Load roles + their standard skills from capability.yaml and link people.
+
+    A person's capability = union of the skills of the roles they hold. People are
+    matched to roles by their ``role_label``. Idempotent: skills/roles upserted by
+    name, join tables rebuilt.
+    """
+    raw = yaml.safe_load((SEED_DIR / "capability.yaml").read_text(encoding="utf-8"))
+
+    # Existing skills/roles by name (dedup skills across roles).
+    skills_by_name: dict[str, Skill] = {
+        s.name: s for s in (await session.execute(select(Skill))).scalars().all()
+    }
+    roles_by_name: dict[str, Role] = {
+        r.name: r for r in (await session.execute(select(Role))).scalars().all()
+    }
+
+    # Rebuild join tables for a clean re-run.
+    await session.execute(delete(RoleSkill))
+    await session.execute(delete(PersonRole))
+
+    for entry in raw["roles"]:
+        role = roles_by_name.get(entry["name"])
+        if role is None:
+            role = Role(name=entry["name"], description=entry.get("description"))
+            session.add(role)
+            roles_by_name[entry["name"]] = role
+        else:
+            role.description = entry.get("description")
+        await session.flush()
+
+        for sk in entry.get("skills", []):
+            skill = skills_by_name.get(sk["name"])
+            if skill is None:
+                skill = Skill(name=sk["name"], description=sk.get("description"))
+                session.add(skill)
+                skills_by_name[sk["name"]] = skill
+                await session.flush()
+            session.add(RoleSkill(role_id=role.id, skill_id=skill.id))
+
+    # Link people to roles by role_label.
+    for person in people_map.values():
+        label = getattr(person, "role_label", None)
+        if not label:
+            continue
+        role = roles_by_name.get(label)
+        if role is not None:
+            session.add(PersonRole(person_id=person.id, role_id=role.id))
+
+    await session.flush()
+
+
 async def main() -> None:
     database_url = os.environ.get(
         "DATABASE_URL",
@@ -167,6 +225,7 @@ async def main() -> None:
             session, "lite", "Лайт шаблон",
             SEED_DIR / "tasks_lite.yaml", people_map,
         )
+        await load_capability(session, people_map)
 
     await engine.dispose()
     print("Seed loaded successfully.")

@@ -35,6 +35,44 @@ class Person(Base):
     is_external = Column(Boolean, nullable=False, default=False)
 
 
+class Role(Base):
+    """A named role (e.g. 'Разработчик'). Bundles standard skills."""
+
+    __tablename__ = "roles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(Text, unique=True, nullable=False)
+    description = Column(Text, nullable=True)
+
+
+class Skill(Base):
+    """An atomic ability with a short description (what it is / what it's for)."""
+
+    __tablename__ = "skills"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(Text, unique=True, nullable=False)
+    description = Column(Text, nullable=True)
+
+
+class RoleSkill(Base):
+    """Skill that a role implies (standard skill set of the role)."""
+
+    __tablename__ = "role_skills"
+
+    role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id"), primary_key=True)
+    skill_id = Column(UUID(as_uuid=True), ForeignKey("skills.id"), primary_key=True)
+
+
+class PersonRole(Base):
+    """A person holding a role. Capability of a person = union of their roles' skills."""
+
+    __tablename__ = "person_roles"
+
+    person_id = Column(UUID(as_uuid=True), ForeignKey("people.id"), primary_key=True)
+    role_id = Column(UUID(as_uuid=True), ForeignKey("roles.id"), primary_key=True)
+
+
 class Template(Base):
     """A reusable project template (e.g. 'standard', 'lite')."""
 
