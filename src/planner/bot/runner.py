@@ -8,7 +8,15 @@ from aiogram.fsm.storage.redis import RedisStorage
 from planner.app.confirm_plan import ConfirmPlanUseCase
 from planner.app.explain_plan import ExplainPlanUseCase
 from planner.app.ports import RepoPort
-from planner.bot.handlers import confirm, load, start, task_router, vacation, whatif
+from planner.bot.handlers import (
+    confirm,
+    load,
+    start,
+    suggest,
+    task_router,
+    vacation,
+    whatif,
+)
 from planner.bot.middlewares.errors import ErrorBoundaryMiddleware
 from planner.bot.middlewares.permissions import ActorMiddleware
 from planner.domain.solver.ports import SolverPort
@@ -57,6 +65,7 @@ def build_dispatcher(
     dp.include_router(start.router)
     dp.include_router(task_router.router)
     dp.include_router(load.router)
+    dp.include_router(suggest.router)
     dp.include_router(whatif.router)
     dp.include_router(confirm.router)
     dp.include_router(vacation.router)

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from planner.app.add_project import ProjectTemplate, TemplateTaskSpec
 from planner.app.ports import (
     AuditRecord,
+    CapabilityRecord,
     PersonRecord,
     PlanVersionRecord,
     ProjectRecord,
@@ -26,8 +27,11 @@ from planner.domain.models import Person as DomainPerson
 from planner.infra.db.models import (
     AuditLog,
     Person,
+    PersonRole,
     PlanVersion,
     Project,
+    RoleSkill,
+    Skill,
     Task,
     Template,
     TemplateDependency,
@@ -209,6 +213,34 @@ class SqlAlchemyRepo:
                 select(PlanVersion).where(PlanVersion.status == "committed")
             )
             return [pv.payload for pv in rows]
+
+    async def get_person_capabilities(self) -> tuple[CapabilityRecord, ...]:
+        async with self._sf() as s:
+            rows = await s.execute(
+                select(Person.id, Person.name, Person.is_external, Skill.name)
+                .select_from(Person)
+                .outerjoin(PersonRole, PersonRole.person_id == Person.id)
+                .outerjoin(RoleSkill, RoleSkill.role_id == PersonRole.role_id)
+                .outerjoin(Skill, Skill.id == RoleSkill.skill_id)
+                .where(Person.is_active.is_(True))
+                .order_by(Person.name)
+            )
+            agg: dict[UUID, dict[str, Any]] = {}
+            for pid, name, is_external, skill_name in rows:
+                entry = agg.setdefault(
+                    pid, {"name": name, "is_external": bool(is_external), "skills": set()}
+                )
+                if skill_name is not None:
+                    entry["skills"].add(skill_name)
+            return tuple(
+                CapabilityRecord(
+                    person_id=pid,
+                    name=e["name"],
+                    skills=frozenset(e["skills"]),
+                    is_external=e["is_external"],
+                )
+                for pid, e in agg.items()
+            )
 
     async def get_solver_people(self) -> tuple[DomainPerson, ...]:
         async with self._sf() as s:

@@ -11,8 +11,12 @@ from sqlalchemy import text
 
 from planner.infra.db.models import (
     Person,
+    PersonRole,
     PlanVersion,
     Project,
+    Role,
+    RoleSkill,
+    Skill,
     Task,
     Template,
     TemplateDependency,
@@ -325,6 +329,54 @@ async def test_get_project_template_with_assignees_and_deps(
             await s.execute(
                 text("DELETE FROM templates WHERE id = :id"), {"id": tmpl_id}
             )
+
+
+# ---------------------------------------------------------------------------
+# get_person_capabilities
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_person_capabilities_unions_role_skills(repo, db_session_factory):
+    """Capability of a person = union of the skills of their roles (spec 5)."""
+    pid, role_id, s1, s2 = uuid4(), uuid4(), uuid4(), uuid4()
+    async with db_session_factory() as s, s.begin():
+        s.add(Person(id=pid, name="Кап Тест", is_active=True, capacity_h=8,
+                     tg_user_id=99055))
+        s.add(Role(id=role_id, name="Кап Роль"))
+        s.add(Skill(id=s1, name="Кап Скилл 1"))
+        s.add(Skill(id=s2, name="Кап Скилл 2"))
+    async with db_session_factory() as s, s.begin():
+        s.add(RoleSkill(role_id=role_id, skill_id=s1))
+        s.add(RoleSkill(role_id=role_id, skill_id=s2))
+        s.add(PersonRole(person_id=pid, role_id=role_id))
+    try:
+        caps = await repo.get_person_capabilities()
+        rec = next(c for c in caps if c.person_id == pid)
+        assert rec.name == "Кап Тест"
+        assert rec.skills == frozenset({"Кап Скилл 1", "Кап Скилл 2"})
+        assert rec.is_external is False
+    finally:
+        async with db_session_factory() as s, s.begin():
+            await s.execute(
+                text("DELETE FROM person_roles WHERE person_id = :id"), {"id": pid}
+            )
+            await s.execute(
+                text("DELETE FROM role_skills WHERE role_id = :id"), {"id": role_id}
+            )
+            await s.execute(
+                text("DELETE FROM skills WHERE id IN (:a,:b)"), {"a": s1, "b": s2}
+            )
+            await s.execute(text("DELETE FROM roles WHERE id = :id"), {"id": role_id})
+            await s.execute(text("DELETE FROM people WHERE id = :id"), {"id": pid})
+
+
+@pytest.mark.asyncio
+async def test_get_person_capabilities_includes_roleless_person(repo, person):
+    """A person with no roles still appears, with an empty skill set (outer join)."""
+    caps = await repo.get_person_capabilities()
+    rec = next((c for c in caps if c.person_id == person), None)
+    assert rec is not None
+    assert rec.skills == frozenset()
 
 
 # ---------------------------------------------------------------------------

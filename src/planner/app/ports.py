@@ -47,6 +47,16 @@ class TaskRecord:
 
 
 @dataclass(frozen=True)
+class CapabilityRecord:
+    """An active person and the union of skills granted by their roles (spec 4)."""
+
+    person_id: UUID
+    name: str
+    skills: frozenset[str]
+    is_external: bool = False
+
+
+@dataclass(frozen=True)
 class AuditRecord:
     created_at: str
     action: str
@@ -106,6 +116,12 @@ class RepoPort(Protocol):
     async def list_audit(self, limit: int = 50, offset: int = 0) -> list[AuditRecord]: ...
 
     async def get_person_by_tg_id(self, tg_user_id: int) -> PersonRecord | None: ...
+
+    # --- Capability matching (spec section 5) ---
+
+    async def get_person_capabilities(self) -> tuple[CapabilityRecord, ...]:
+        """Active people with the union of skills implied by their roles."""
+        ...
 
     # --- Solver inputs (spec section 7.1) ---
 

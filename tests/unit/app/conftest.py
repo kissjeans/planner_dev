@@ -32,6 +32,9 @@ class FakeRepo:
     async def get_solver_people(self):
         return tuple(getattr(self, "solver_people", ()))
 
+    async def get_person_capabilities(self):
+        return tuple(getattr(self, "capabilities", ()))
+
     async def list_committed_plans(self):
         return list(getattr(self, "committed_payloads", []))
 
