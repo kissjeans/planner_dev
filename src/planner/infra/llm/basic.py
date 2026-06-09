@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from datetime import date
+from typing import Literal
 
 from planner.domain.intent import (
     AddProjectIntent,
@@ -97,7 +98,9 @@ class BasicIntentParser:
         if any(k in low for k in ("проект", "project", "новый проект", "add")):
             title_m = _QUOTE.search(text)
             if title_m:
-                template = "lite" if "lite" in low or "лайт" in low else "standard"
+                template: Literal["standard", "lite"] = (
+                    "lite" if "lite" in low or "лайт" in low else "standard"
+                )
                 return AddProjectIntent(
                     title=title_m[1].strip(),
                     template_code=template,
@@ -130,6 +133,7 @@ class BasicIntentParser:
 
     def _what_if(self, text: str, ctx: ChatContext) -> Intent:
         low = text.lower()
+        op: Literal["shift_deadline", "add_person", "switch_to_lite", "drop_project"]
         if "lite" in low or "лайт" in low:
             op = "switch_to_lite"
         elif "человек" in low or "+1" in low:

@@ -187,7 +187,6 @@ def test_vacation_unknown_person_still_redirects(client):
 
 def _error_client(exc_type):
     """App fixture whose repo raises exc_type on list_project_tasks."""
-    from planner.app.confirm_plan import PlanNotFoundError, PlanNotProposedError
 
     class _ErrorRepo(WebFakeRepo):
         async def list_project_tasks(self, project_id):

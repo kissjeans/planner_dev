@@ -105,7 +105,9 @@ def test_build_dispatcher_no_openai_no_stt(mock_redis_storage):
 @pytest.mark.asyncio
 async def test_run_builds_bot_and_polls(mock_redis_storage):
     """runner.py:67-70 — run() creates Bot + Dispatcher and starts polling."""
-    from unittest.mock import AsyncMock, patch as _patch
+    from unittest.mock import AsyncMock
+    from unittest.mock import patch as _patch
+
     from planner.bot.runner import run
 
     settings = _settings(bot_token="123:TEST")

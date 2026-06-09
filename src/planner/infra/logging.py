@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import MutableMapping
 from contextvars import ContextVar
 from typing import Any
 
@@ -20,8 +21,8 @@ def new_correlation_id() -> str:
 
 
 def _add_correlation(
-    _logger: Any, _method: str, event_dict: dict[str, Any]
-) -> dict[str, Any]:
+    _logger: Any, _method: str, event_dict: MutableMapping[str, Any]
+) -> MutableMapping[str, Any]:
     cid = correlation_id.get()
     if cid:
         event_dict["correlation_id"] = cid

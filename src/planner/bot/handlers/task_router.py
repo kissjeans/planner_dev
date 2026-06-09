@@ -8,6 +8,7 @@ plan. Without those deps it degrades to a human-readable interpretation.
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 from uuid import UUID
 
 from aiogram import F, Router
@@ -23,7 +24,17 @@ from planner.app.add_project import (
 from planner.app.explain_plan import ExplainPlanUseCase
 from planner.app.ports import PersonRecord, RepoPort
 from planner.bot.states import PlanEditState
-from planner.domain.intent import AddProjectIntent, ClarifyIntent, Intent
+from planner.domain.intent import (
+    AddProjectIntent,
+    AssignIntent,
+    ClarifyIntent,
+    ConfirmIntent,
+    Intent,
+    LoadIntent,
+    VacationIntent,
+    WhatIfIntent,
+)
+from planner.domain.models import DayAllocation
 from planner.domain.permissions import can_execute
 from planner.domain.solver.ports import SolverPort
 from planner.infra.llm.ports import ChatContext, IntentParserPort
@@ -57,7 +68,7 @@ async def build_add_project_reply(
     if not people:
         return "В команде нет активных людей — некому планировать.", None
 
-    existing: list = []
+    existing: list[DayAllocation] = []
     for payload in await repo.list_committed_plans():
         existing.extend(deserialize_allocations(payload))
 
@@ -90,29 +101,28 @@ async def build_add_project_reply(
 
 def describe_intent(intent: Intent) -> str:
     """Render a parsed intent as a short Russian confirmation line."""
-    kind = intent.kind
-    if kind == "add_project":
+    if isinstance(intent, AddProjectIntent):
         when = intent.deadline.isoformat() if intent.deadline else "обратный режим (КП)"
         return f"Проект «{intent.title}», шаблон {intent.template_code}, дедлайн: {when}."
-    if kind == "load":
+    if isinstance(intent, LoadIntent):
         who = intent.person_name or "вся команда"
         return f"Загрузка: {who}."
-    if kind == "what_if":
+    if isinstance(intent, WhatIfIntent):
         return f"Что-если: {intent.operation}, проект {intent.project_title or '—'}."
-    if kind == "vacation":
+    if isinstance(intent, VacationIntent):
         return f"Отпуск {intent.person_name}: {intent.day_from}–{intent.day_to}."
-    if kind == "confirm":
+    if isinstance(intent, ConfirmIntent):
         return "Подтверждение последнего предложенного плана."
-    if kind == "assign":
+    if isinstance(intent, AssignIntent):
         return f"Назначить {intent.task_ref} на {intent.person_name}."
-    return getattr(intent, "question", None) or "Не понял команду."
+    return intent.question or "Не понял команду."
 
 
 async def _handle_text(
     message: Message,
     text: str,
     parser: IntentParserPort,
-    actor: dict,
+    actor: dict[str, Any],
     *,
     repo: RepoPort | None = None,
     solver: SolverPort | None = None,
@@ -155,19 +165,21 @@ async def _handle_text(
 async def handle_voice(
     message: Message,
     parser: IntentParserPort,
-    actor: dict,
+    actor: dict[str, Any],
     stt: STTPort | None = None,
     repo: RepoPort | None = None,
     solver: SolverPort | None = None,
     actor_record: PersonRecord | None = None,
     explain_uc: ExplainPlanUseCase | None = None,
 ) -> None:
-    if stt is None or message.voice is None:
+    if stt is None or message.voice is None or message.bot is None:
         await message.answer("Голосовые сообщения не поддерживаются — напиши текстом.")
         return
     bot = message.bot
     file = await bot.get_file(message.voice.file_id)
+    assert file.file_path is not None
     audio = await bot.download_file(file.file_path)
+    assert audio is not None
     text = await stt.transcribe(audio.read(), "voice.ogg")
     if not text:
         await message.answer("Не удалось распознать голос — напиши текстом.")
@@ -182,7 +194,7 @@ async def handle_voice(
 async def handle_task(
     message: Message,
     parser: IntentParserPort,
-    actor: dict,
+    actor: dict[str, Any],
     repo: RepoPort | None = None,
     solver: SolverPort | None = None,
     actor_record: PersonRecord | None = None,
@@ -203,7 +215,7 @@ async def handle_edit_text(
     message: Message,
     state: FSMContext,
     parser: IntentParserPort,
-    actor: dict,
+    actor: dict[str, Any],
     repo: RepoPort | None = None,
     solver: SolverPort | None = None,
     actor_record: PersonRecord | None = None,
@@ -232,7 +244,7 @@ async def handle_edit_text(
 async def handle_mention_or_dm(
     message: Message,
     parser: IntentParserPort,
-    actor: dict,
+    actor: dict[str, Any],
     repo: RepoPort | None = None,
     solver: SolverPort | None = None,
     actor_record: PersonRecord | None = None,
@@ -245,7 +257,7 @@ async def handle_mention_or_dm(
     """
     raw = message.text or ""
 
-    if message.chat.type != "private":
+    if message.chat.type != "private" and message.bot is not None:
         # Group / supergroup: only respond when bot is @mentioned or replied-to.
         bot_info = await message.bot.get_me()
         bot_mention = f"@{bot_info.username}".lower()

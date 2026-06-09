@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Callable
 from datetime import date
 
 import matplotlib
@@ -13,7 +14,11 @@ import matplotlib.pyplot as plt  # noqa: E402
 from planner.domain.models import Assignment
 
 
-def render_gantt(assignments: list[Assignment], origin: date, label_for=None) -> bytes:
+def render_gantt(
+    assignments: list[Assignment],
+    origin: date,
+    label_for: Callable[[Assignment], str] | None = None,
+) -> bytes:
     """Render task bars positioned by day-offset from ``origin``."""
     label_for = label_for or (lambda a: str(a.task_id)[:8])
     fig, ax = plt.subplots(figsize=(8, max(2, len(assignments) * 0.45)))

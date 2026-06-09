@@ -9,8 +9,11 @@ import pytest
 
 from planner.infra.llm.basic import BasicIntentParser
 from planner.infra.llm.ports import ChatContext
-from planner.infra.llm.prompts import EXPLAIN_SYSTEM_PROMPT, INTENT_SYSTEM_PROMPT, build_user_message
-
+from planner.infra.llm.prompts import (
+    EXPLAIN_SYSTEM_PROMPT,
+    INTENT_SYSTEM_PROMPT,
+    build_user_message,
+)
 
 # ---------------------------------------------------------------------------
 # prompts.py coverage

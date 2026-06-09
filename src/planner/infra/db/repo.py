@@ -165,7 +165,12 @@ class SqlAlchemyRepo:
                 t.status = status
 
     async def add_audit(
-        self, actor_id, action, entity_type, entity_id, payload
+        self,
+        actor_id: UUID | None,
+        action: str,
+        entity_type: str,
+        entity_id: UUID | None,
+        payload: dict[str, Any] | None,
     ) -> None:
         async with self._sf() as s, s.begin():
             s.add(
@@ -275,15 +280,15 @@ class SqlAlchemyRepo:
                 assignees.setdefault(row.template_task_id, []).append(row.person_id)
 
             deps: dict[UUID, list[tuple[int, str]]] = {}
-            for row in await s.scalars(
+            for dep_row in await s.scalars(
                 select(TemplateDependency).where(
                     TemplateDependency.template_task_id.in_(id_to_ord)
                 )
             ):
-                dep_ord = id_to_ord.get(row.depends_on_id)
+                dep_ord = id_to_ord.get(dep_row.depends_on_id)
                 if dep_ord is not None:
-                    deps.setdefault(row.template_task_id, []).append(
-                        (dep_ord, row.link_type)
+                    deps.setdefault(dep_row.template_task_id, []).append(
+                        (dep_ord, dep_row.link_type)
                     )
 
             specs = tuple(

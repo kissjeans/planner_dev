@@ -41,11 +41,13 @@ def verify_telegram_login(data: dict[str, str], bot_token: str) -> bool:
 def create_jwt(claims: dict[str, Any], secret: str) -> str:
     payload = dict(claims)
     payload["exp"] = datetime.now(UTC) + timedelta(hours=JWT_TTL_HOURS)
-    return jwt.encode(payload, secret, algorithm=JWT_ALGO)
+    token: str = jwt.encode(payload, secret, algorithm=JWT_ALGO)
+    return token
 
 
 def decode_jwt(token: str, secret: str) -> dict[str, Any] | None:
     try:
-        return jwt.decode(token, secret, algorithms=[JWT_ALGO])
+        claims: dict[str, Any] = jwt.decode(token, secret, algorithms=[JWT_ALGO])
+        return claims
     except JWTError:
         return None

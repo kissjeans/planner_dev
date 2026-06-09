@@ -17,7 +17,10 @@ router = APIRouter()
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request) -> HTMLResponse:
-    return request.app.state.templates.TemplateResponse(request, "login.html", {})
+    response: HTMLResponse = request.app.state.templates.TemplateResponse(
+        request, "login.html", {}
+    )
+    return response
 
 
 @router.get("/login/telegram")

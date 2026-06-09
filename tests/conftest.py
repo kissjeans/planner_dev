@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import os
 import subprocess
 
@@ -10,7 +9,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from planner.infra.db.base import create_engine, create_session_factory
+from planner.infra.db.base import create_session_factory
 
 # Docker Desktop on macOS uses a non-standard socket path
 _DOCKER_DESKTOP_SOCK = os.path.expanduser("~/.docker/run/docker.sock")

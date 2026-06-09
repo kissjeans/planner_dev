@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date, timedelta
+from uuid import UUID
 
 from planner.app.render.heatmap import render_heatmap
 from planner.domain.models import DayAllocation, Person
@@ -22,7 +23,7 @@ class LoadSummaryUseCase:
         day_list = [start + timedelta(days=i) for i in range(days)]
         index = {d: i for i, d in enumerate(day_list)}
 
-        used: dict[tuple, int] = defaultdict(int)
+        used: dict[tuple[UUID, int], int] = defaultdict(int)
         for a in allocations:
             if a.day in index:
                 used[(a.person_id, index[a.day])] += a.hours

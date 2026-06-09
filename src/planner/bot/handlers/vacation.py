@@ -7,6 +7,7 @@ Falls back to acknowledgement when repo not wired.
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -25,7 +26,7 @@ router = Router(name="vacation")
 async def handle_vacation(
     message: Message,
     parser: IntentParserPort,
-    actor: dict,
+    actor: dict[str, Any],
     repo: RepoPort | None = None,
     actor_record: PersonRecord | None = None,
 ) -> None:

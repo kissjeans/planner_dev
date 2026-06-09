@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
@@ -16,10 +18,11 @@ async def audit_log(
     request: Request,
     limit: int = 50,
     offset: int = 0,
-    user: dict = Depends(current_user),
+    user: dict[str, Any] = Depends(current_user),
     repo: RepoPort = Depends(get_repo),
 ) -> HTMLResponse:
     entries = await repo.list_audit(limit=limit, offset=offset)
-    return request.app.state.templates.TemplateResponse(
+    response: HTMLResponse = request.app.state.templates.TemplateResponse(
         request, "audit.html", {"entries": entries, "user": user}
     )
+    return response

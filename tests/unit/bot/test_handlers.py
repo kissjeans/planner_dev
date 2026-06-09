@@ -283,7 +283,8 @@ async def test_confirm_callback_plan_not_proposed():
         confirm_uc=_FakeConfirmUCNotProposed(),  # type: ignore[arg-type]
         actor_record=actor_record,
     )
-    assert "не найден" in cb_answers.calls[0].lower() or "зафиксирован" in cb_answers.calls[0].lower()
+    reply = cb_answers.calls[0].lower()
+    assert "не найден" in reply or "зафиксирован" in reply
 
 
 @pytest.mark.asyncio

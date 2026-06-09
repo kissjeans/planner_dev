@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, Request, status
@@ -22,28 +23,30 @@ async def root() -> RedirectResponse:
 @router.get("/plan", response_class=HTMLResponse)
 async def plan_list(
     request: Request,
-    user: dict = Depends(current_user),
+    user: dict[str, Any] = Depends(current_user),
     repo: RepoPort = Depends(get_repo),
 ) -> HTMLResponse:
     projects = await repo.list_projects()
-    return request.app.state.templates.TemplateResponse(
+    response: HTMLResponse = request.app.state.templates.TemplateResponse(
         request, "plan.html", {"projects": projects, "user": user}
     )
+    return response
 
 
 @router.get("/plan/{project_id}", response_class=HTMLResponse)
 async def plan_detail(
     project_id: UUID,
     request: Request,
-    user: dict = Depends(current_user),
+    user: dict[str, Any] = Depends(current_user),
     repo: RepoPort = Depends(get_repo),
 ) -> HTMLResponse:
     tasks = await repo.list_project_tasks(project_id)
-    return request.app.state.templates.TemplateResponse(
+    response: HTMLResponse = request.app.state.templates.TemplateResponse(
         request,
         "plan_detail.html",
         {"project_id": project_id, "tasks": tasks, "user": user},
     )
+    return response
 
 
 @router.post("/plan/{project_id}/task/{task_id}/edit")
@@ -52,7 +55,7 @@ async def edit_task(
     task_id: UUID,
     start: str = Form(""),
     end: str = Form(""),
-    user: dict = Depends(require_admin),
+    user: dict[str, Any] = Depends(require_admin),
     repo: RepoPort = Depends(get_repo),
 ) -> RedirectResponse:
     await repo.update_task_schedule(

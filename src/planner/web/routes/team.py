@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Form, Request, status
@@ -16,7 +17,7 @@ from planner.web.deps import current_user, get_repo, require_admin
 router = APIRouter()
 
 
-def _actor(user: dict) -> PersonRecord:
+def _actor(user: dict[str, Any]) -> PersonRecord:
     sub = user.get("sub", "")
     try:
         pid = UUID(sub)
@@ -28,13 +29,14 @@ def _actor(user: dict) -> PersonRecord:
 @router.get("/team", response_class=HTMLResponse)
 async def team_list(
     request: Request,
-    user: dict = Depends(current_user),
+    user: dict[str, Any] = Depends(current_user),
     repo: RepoPort = Depends(get_repo),
 ) -> HTMLResponse:
     people = await repo.list_people()
-    return request.app.state.templates.TemplateResponse(
+    response: HTMLResponse = request.app.state.templates.TemplateResponse(
         request, "team.html", {"people": people, "user": user}
     )
+    return response
 
 
 @router.post("/team/vacation")
@@ -43,7 +45,7 @@ async def add_vacation(
     day_from: str = Form(...),
     day_to: str = Form(...),
     capacity_h: int = Form(0),
-    user: dict = Depends(require_admin),
+    user: dict[str, Any] = Depends(require_admin),
     repo: RepoPort = Depends(get_repo),
 ) -> RedirectResponse:
     intent = VacationIntent(

@@ -8,6 +8,7 @@ no committed plan or solver is available.
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 from uuid import UUID
 
 from aiogram import Router
@@ -56,7 +57,7 @@ async def _base_request(repo: RepoPort, solver: SolverPort) -> PlanRequest | Non
 async def handle_whatif(
     message: Message,
     parser: IntentParserPort,
-    actor: dict,
+    actor: dict[str, Any],
     repo: RepoPort | None = None,
     solver: SolverPort | None = None,
 ) -> None:

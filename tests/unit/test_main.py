@@ -9,7 +9,6 @@ import pytest
 
 def _run_main_mocked():
     """Run main() fully mocked; return (fake_dp, fake_server, captured_deps)."""
-    import planner.main as main_mod
 
     fake_settings = MagicMock()
     fake_settings.bot_token = "123:TEST"

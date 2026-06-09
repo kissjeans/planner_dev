@@ -11,11 +11,13 @@ from planner.web.auth import COOKIE_NAME, decode_jwt
 
 
 def get_repo(request: Request) -> RepoPort:
-    return request.app.state.repo
+    repo: RepoPort = request.app.state.repo
+    return repo
 
 
 def get_jwt_secret(request: Request) -> str:
-    return request.app.state.jwt_secret
+    secret: str = request.app.state.jwt_secret
+    return secret
 
 
 def current_user(

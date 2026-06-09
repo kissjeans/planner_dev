@@ -37,7 +37,7 @@ class ClaudeIntentParser:
         try:
             return await self._client.messages.create(
                 model=_MODEL,
-                response_model=Intent,
+                response_model=Intent,  # type: ignore[arg-type]  # discriminated-union alias
                 max_tokens=400,
                 max_retries=2,
                 messages=[
@@ -59,5 +59,7 @@ class ClaudeIntentParser:
             ],
         )
         return "".join(
-            block.text for block in resp.content if getattr(block, "type", "") == "text"
+            getattr(block, "text", "")
+            for block in resp.content
+            if getattr(block, "type", "") == "text"
         )

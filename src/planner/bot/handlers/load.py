@@ -16,6 +16,7 @@ from aiogram.types import BufferedInputFile, Message
 from planner.app.add_project import deserialize_allocations
 from planner.app.load_summary import DEFAULT_DAYS, LoadSummaryUseCase
 from planner.app.ports import RepoPort
+from planner.domain.models import DayAllocation
 from planner.infra.llm.ports import ChatContext, IntentParserPort
 
 router = Router(name="load")
@@ -29,7 +30,7 @@ async def build_load_image(
     if not people:
         return None
 
-    allocations = []
+    allocations: list[DayAllocation] = []
     for payload in await repo.list_committed_plans():
         allocations.extend(deserialize_allocations(payload))
 
