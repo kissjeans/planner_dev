@@ -145,3 +145,51 @@ async def test_execute_rejects_empty_template():
 
     with pytest.raises(InvalidProjectError):
         await uc.execute(_intent(), _actor(), people=(p,), template=empty, today=TODAY)
+
+
+@pytest.mark.asyncio
+async def test_cyclic_template_raises_invalid_and_writes_nothing():
+    """A template whose deps form a cycle must fail BEFORE any DB write."""
+    person = Person(id=uuid4(), name="Андрей", capacity_h=8)
+    template = ProjectTemplate(
+        code="standard",
+        tasks=(
+            TemplateTaskSpec(1, "A", 8, (person.id,), depends_on_ords=(2,)),
+            TemplateTaskSpec(2, "B", 8, (person.id,), depends_on_ords=(1,)),
+        ),
+    )
+    repo = FakeRepo()
+    intent = AddProjectIntent(title="Цикл", template_code="standard")
+    with pytest.raises(InvalidProjectError):
+        await AddProjectUseCase(repo, GreedySolver(WeekendCalendar())).execute(
+            intent,
+            PersonRecord(id=uuid4(), name="Менеджер", is_admin=True),
+            (person,),
+            template,
+            today=date.today(),
+        )
+    assert repo.projects == {}       # no orphan project row
+    assert repo.plan_versions == {}  # no plan version
+    assert repo.audits == []         # no audit entry
+    assert repo.saved_tasks == []    # no task rows written
+
+
+@pytest.mark.asyncio
+async def test_add_project_persists_tasks_with_schedule():
+    repo = FakeRepo()
+    p = _person()
+    uc = AddProjectUseCase(repo, _solver())
+
+    result = await uc.execute(
+        _intent(deadline=TODAY + timedelta(days=30)),
+        _actor(),
+        people=(p,),
+        template=_template(p.id),
+        today=TODAY,
+    )
+
+    assert repo.saved_tasks, "tasks must be persisted to the tasks table"
+    saved_project_id, saved_tasks, saved_assignments = repo.saved_tasks[0]
+    assert saved_project_id == result.project.id
+    assert {t.id for t in saved_tasks} == {t.id for t in result.tasks}
+    assert len(saved_assignments) == len(result.plan.assignments)

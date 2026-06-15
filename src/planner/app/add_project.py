@@ -13,6 +13,8 @@ from datetime import date
 from typing import Any
 from uuid import UUID, uuid4
 
+import networkx as nx
+
 from planner.app.ports import PersonRecord, ProjectRecord, RepoPort
 from planner.domain.intent import AddProjectIntent
 from planner.domain.models import (
@@ -212,15 +214,8 @@ class AddProjectUseCase:
         if not template.tasks:
             raise InvalidProjectError("Шаблон без задач.")
 
-        project = await self._repo.create_project(
-            title=title,
-            template_code=intent.template_code,
-            deadline=intent.deadline,
-            brief_return_date=intent.brief_return_date,
-            actor_id=actor.id,
-        )
-
-        tasks, deps = instantiate_template(template, project.id)
+        project_id = uuid4()
+        tasks, deps = instantiate_template(template, project_id)
         req = PlanRequest(
             people=people,
             tasks=tasks,
@@ -231,12 +226,25 @@ class AddProjectUseCase:
             deadline=intent.deadline,
         )
 
-        plan = self._solver.plan(req)
+        try:
+            plan = self._solver.plan(req)
+        except nx.NetworkXUnfeasible as exc:
+            raise InvalidProjectError("Цикл в зависимостях шаблона.") from exc
         earliest_end = (
             self._solver.critical_path_end(req, today)
             if intent.deadline is None
             else None
         )
+
+        project = await self._repo.create_project(
+            title=title,
+            template_code=intent.template_code,
+            deadline=intent.deadline,
+            brief_return_date=intent.brief_return_date,
+            actor_id=actor.id,
+            project_id=project_id,
+        )
+        await self._repo.save_project_tasks(project.id, tasks, plan.assignments)
 
         pv = await self._repo.save_plan_version(
             project.id, "proposed", serialize_plan(plan), actor.id

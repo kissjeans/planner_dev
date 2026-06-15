@@ -166,3 +166,26 @@ class TestSettingsValidation:
 
         assert isinstance(settings, Settings)
         assert settings.bot_token == "test_token"
+
+
+class TestEnsureSecureConfig:
+    def _base(self, **overrides: object) -> Settings:
+        from planner.settings import Settings
+        kwargs: dict[str, object] = dict(
+            database_url="x", redis_url="x", bot_token="t", team_chat_id=1,
+        )
+        kwargs.update(overrides)
+        return Settings(_env_file=None, **kwargs)  # type: ignore[arg-type]
+
+    def test_default_secret_in_production_raises(self) -> None:
+        from planner.settings import ensure_secure_config
+        with pytest.raises(RuntimeError, match="JWT_SECRET"):
+            ensure_secure_config(self._base(debug=False))
+
+    def test_default_secret_in_debug_is_allowed(self) -> None:
+        from planner.settings import ensure_secure_config
+        ensure_secure_config(self._base(debug=True))  # no raise
+
+    def test_custom_secret_in_production_is_allowed(self) -> None:
+        from planner.settings import ensure_secure_config
+        ensure_secure_config(self._base(debug=False, jwt_secret="a-strong-secret"))

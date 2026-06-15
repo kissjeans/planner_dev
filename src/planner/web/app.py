@@ -46,4 +46,8 @@ def create_app(repo: RepoPort, settings: Settings) -> FastAPI:
     async def _conflict(_request: Request, exc: Exception) -> PlainTextResponse:
         return PlainTextResponse(user_message(exc), status_code=409)
 
+    @app.exception_handler(ValueError)
+    async def _bad_request(_request: Request, _exc: ValueError) -> PlainTextResponse:
+        return PlainTextResponse("Некорректные данные в запросе.", status_code=400)
+
     return app

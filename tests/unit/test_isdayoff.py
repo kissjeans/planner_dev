@@ -63,3 +63,16 @@ async def test_fetch_raises_on_http_error():
     async with httpx.AsyncClient(transport=transport) as client:
         with pytest.raises(httpx.HTTPStatusError):
             await IsDayOffClient(client).fetch_year_offdays(2026)
+
+
+@pytest.mark.asyncio
+async def test_fetch_snapshot_for_years_merges_years(monkeypatch):
+    from planner.infra.calendar import isdayoff as mod
+
+    async def fake_fetch(self, year):  # type: ignore[no-untyped-def]
+        return frozenset({date(year, 3, 2)})  # one weekday off-day per year
+
+    monkeypatch.setattr(mod.IsDayOffClient, "fetch_year_offdays", fake_fetch)
+    cal = await mod.fetch_snapshot_for_years((2026, 2027))
+    assert not cal.is_working_day(date(2026, 3, 2))
+    assert not cal.is_working_day(date(2027, 3, 2))

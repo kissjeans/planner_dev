@@ -18,14 +18,16 @@ class FakeRepo:
         self.overrides: list[tuple[UUID, date, int, str | None]] = []
         self.task_statuses: dict[UUID, str] = {}
         self.audits: list[tuple] = []
+        self.saved_tasks: list[tuple] = []
 
     async def set_task_status(self, task_id: UUID, status: str) -> None:
         self.task_statuses[task_id] = status
 
     async def create_project(
-        self, *, title, template_code, deadline, brief_return_date, actor_id
+        self, *, title, template_code, deadline, brief_return_date, actor_id,
+        project_id=None,
     ) -> ProjectRecord:
-        rec = ProjectRecord(uuid4(), title, "planning", deadline)
+        rec = ProjectRecord(project_id or uuid4(), title, "planning", deadline)
         self.projects[rec.id] = rec
         return rec
 
@@ -53,6 +55,17 @@ class FakeRepo:
             pv.id, pv.project_id, status, pv.payload
         )
 
+    async def transition_plan_status(
+        self, pv_id: UUID, from_status: str, to_status: str
+    ) -> bool:
+        pv = self.plan_versions.get(pv_id)
+        if pv is None or pv.status != from_status:
+            return False
+        self.plan_versions[pv_id] = PlanVersionRecord(
+            pv.id, pv.project_id, to_status, pv.payload
+        )
+        return True
+
     async def save_plan_version(self, project_id, status, payload, actor_id):
         rec = PlanVersionRecord(uuid4(), project_id, status, payload)
         self.plan_versions[rec.id] = rec
@@ -67,5 +80,15 @@ class FakeRepo:
     async def upsert_day_override(self, person_id, day, capacity_h, reason) -> None:
         self.overrides.append((person_id, day, capacity_h, reason))
 
+    async def set_project_status(self, project_id: UUID, status: str) -> None:
+        p = self.projects.get(project_id)
+        if p is not None:
+            self.projects[project_id] = ProjectRecord(
+                p.id, p.title, status, p.deadline
+            )
+
     async def add_audit(self, actor_id, action, entity_type, entity_id, payload) -> None:
         self.audits.append((actor_id, action, entity_type, entity_id, payload))
+
+    async def save_project_tasks(self, project_id, tasks, assignments) -> None:
+        self.saved_tasks.append((project_id, tasks, assignments))

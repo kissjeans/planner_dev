@@ -50,3 +50,15 @@ async def test_already_committed_raises():
     repo.plan_versions[pv.id] = pv
     with pytest.raises(PlanNotProposedError):
         await ConfirmPlanUseCase(repo).execute(pv.id, ADMIN)
+
+
+async def test_double_confirm_second_raises():
+    """Two confirms of the same plan: first wins, second gets PlanNotProposedError
+    and writes no second audit entry (the TOCTOU regression)."""
+    repo = FakeRepo()
+    pv = _proposed(repo)
+    uc = ConfirmPlanUseCase(repo)
+    await uc.execute(pv.id, ADMIN)
+    with pytest.raises(PlanNotProposedError):
+        await uc.execute(pv.id, ADMIN)
+    assert len(repo.audits) == 1

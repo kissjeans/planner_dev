@@ -43,6 +43,7 @@ async def test_main_wires_and_runs():
         patch.object(main_mod, "Bot", return_value=MagicMock()),
         patch.object(main_mod, "GreedySolver", return_value=MagicMock()),
         patch.object(main_mod, "SnapshotCalendar", return_value=MagicMock()),
+        patch.object(main_mod, "_load_calendar", new=AsyncMock(return_value=MagicMock())),
         patch.object(main_mod, "build_parser", return_value=MagicMock()),
         patch.object(main_mod, "build_dispatcher", return_value=fake_dp),
         patch.object(main_mod, "create_app", return_value=MagicMock()),
@@ -69,14 +70,20 @@ async def test_daily_summary_with_png():
     fake_bot.send_photo = AsyncMock()
     fake_bot.send_message = AsyncMock()
 
+    fake_calendar_sentinel = MagicMock()
+    fake_solver = MagicMock()
+
     with (
         patch.object(main_mod, "get_settings", return_value=fake_settings),
         patch.object(main_mod, "create_engine", return_value=MagicMock()),
         patch.object(main_mod, "create_session_factory", return_value=MagicMock()),
         patch.object(main_mod, "SqlAlchemyRepo", return_value=MagicMock()),
         patch.object(main_mod, "Bot", return_value=fake_bot),
-        patch.object(main_mod, "GreedySolver", return_value=MagicMock()),
+        patch.object(main_mod, "GreedySolver", return_value=fake_solver),
         patch.object(main_mod, "SnapshotCalendar", return_value=MagicMock()),
+        patch.object(
+            main_mod, "_load_calendar", new=AsyncMock(return_value=fake_calendar_sentinel)
+        ),
         patch.object(main_mod, "build_parser", return_value=MagicMock()),
         patch.object(main_mod, "build_dispatcher", return_value=fake_dp),
         patch.object(main_mod, "create_app", return_value=MagicMock()),
@@ -90,10 +97,26 @@ async def test_daily_summary_with_png():
         await deps.send_daily_summary()
         assert fake_bot.send_photo.called
 
+        # refresh job swaps solver.calendar with the sentinel (patch still active)
+        await deps.refresh_calendar_snapshot()
+        assert fake_solver.calendar == fake_calendar_sentinel
+
     # no-PNG path — re-run with None result
     with patch.object(main_mod, "build_load_image", new=AsyncMock(return_value=None)):
         await deps.send_daily_summary()
     assert fake_bot.send_message.called
 
-    # _refresh_calendar is a no-op
-    await deps.refresh_calendar_snapshot()
+
+@pytest.mark.asyncio
+async def test_load_calendar_falls_back_on_network_error():
+    import planner.main as main_mod
+
+    with patch.object(
+        main_mod,
+        "fetch_snapshot_for_years",
+        new=AsyncMock(side_effect=RuntimeError("net down")),
+    ):
+        cal = await main_mod._load_calendar()
+    from planner.infra.calendar.snapshot import SnapshotCalendar
+
+    assert isinstance(cal, SnapshotCalendar)

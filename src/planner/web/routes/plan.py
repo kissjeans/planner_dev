@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from planner.app.ports import RepoPort
-from planner.web.deps import current_user, get_repo, require_admin
+from planner.web.deps import actor_id_from, current_user, get_repo, require_admin
 
 router = APIRouter()
 
@@ -65,6 +65,6 @@ async def edit_task(
         None,
     )
     await repo.add_audit(
-        None, "edit_task", "task", task_id, {"start": start, "end": end}
+        actor_id_from(user), "edit_task", "task", task_id, {"start": start, "end": end}
     )
     return RedirectResponse("/plan", status_code=status.HTTP_303_SEE_OTHER)

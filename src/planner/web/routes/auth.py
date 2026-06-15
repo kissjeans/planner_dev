@@ -14,6 +14,8 @@ from planner.web.auth import (
 
 router = APIRouter()
 
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+
 
 def _set_session_cookie(resp: RedirectResponse, token: str) -> None:
     resp.set_cookie(
@@ -33,9 +35,11 @@ async def login_page(request: Request) -> HTMLResponse:
 async def dev_login(request: Request) -> RedirectResponse:
     """Local-only admin login bypass (Telegram widget needs a public domain).
 
-    Enabled only when ``DEBUG=true``; returns 404 in production.
+    Enabled only when ``DEBUG=true`` AND the request comes from loopback;
+    returns 404 otherwise so it can never grant admin over the network.
     """
-    if not request.app.state.debug:
+    client_host = request.client.host if request.client else ""
+    if not request.app.state.debug or client_host not in _LOOPBACK_HOSTS:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
     claims = {"sub": "dev", "name": "Dev Admin", "tg_id": 0, "is_admin": True}
     token = create_jwt(claims, request.app.state.jwt_secret)

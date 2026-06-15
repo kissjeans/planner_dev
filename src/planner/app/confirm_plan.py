@@ -32,10 +32,15 @@ class ConfirmPlanUseCase:
         pv = await self._repo.get_plan_version(plan_version_id)
         if pv is None:
             raise PlanNotFoundError(str(plan_version_id))
-        if pv.status != "proposed":
-            raise PlanNotProposedError(pv.status)
 
-        await self._repo.set_plan_version_status(plan_version_id, "committed")
+        moved = await self._repo.transition_plan_status(
+            plan_version_id, "proposed", "committed"
+        )
+        if not moved:
+            # Lost the race or never proposed — re-read for the precise status.
+            current = await self._repo.get_plan_version(plan_version_id)
+            raise PlanNotProposedError(current.status if current else "missing")
+
         await self._repo.add_audit(
             actor.id, "confirm_plan", "plan_version", plan_version_id, None
         )

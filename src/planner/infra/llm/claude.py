@@ -23,6 +23,8 @@ from planner.infra.llm.prompts import (
 log = structlog.get_logger(__name__)
 
 _MODEL = "claude-haiku-4-5-20251001"
+_TIMEOUT_S = 10.0   # chat UX: past this, the regex fallback is better
+_MAX_RETRIES = 1
 _INTENT_ADAPTER: TypeAdapter[Intent] = TypeAdapter(Intent)
 
 _JSON_INSTRUCTION = (
@@ -57,7 +59,9 @@ class ClaudeIntentParser:
     def __init__(self, api_key: str, fallback: BasicIntentParser | None = None) -> None:
         from anthropic import AsyncAnthropic
 
-        self._client = AsyncAnthropic(api_key=api_key)
+        self._client = AsyncAnthropic(
+            api_key=api_key, timeout=_TIMEOUT_S, max_retries=_MAX_RETRIES
+        )
         self._fallback = fallback or BasicIntentParser()
 
     async def parse(self, text: str, ctx: ChatContext) -> Intent:
@@ -75,10 +79,14 @@ class ClaudeIntentParser:
             return await self._fallback.parse(text, ctx)
 
     async def explain_plan(self, plan_summary: str) -> str:
-        resp = await self._client.messages.create(
-            model=_MODEL,
-            max_tokens=400,
-            system=EXPLAIN_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": plan_summary}],
-        )
-        return _extract_text(resp)
+        try:
+            resp = await self._client.messages.create(
+                model=_MODEL,
+                max_tokens=400,
+                system=EXPLAIN_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": plan_summary}],
+            )
+            return _extract_text(resp) or plan_summary
+        except Exception as exc:  # noqa: BLE001 — degrade, never crash the bot
+            log.warning("claude_explain_failed", error=str(exc))
+            return plan_summary

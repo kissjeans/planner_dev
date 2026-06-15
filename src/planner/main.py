@@ -7,6 +7,7 @@ asyncio event loop — one process, one DB writer (spec section 17).
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 
 import structlog
 import uvicorn
@@ -16,19 +17,31 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from planner.bot.handlers.load import build_load_image
 from planner.bot.runner import build_dispatcher, build_parser
 from planner.domain.solver.greedy import GreedySolver
+from planner.infra.calendar.isdayoff import fetch_snapshot_for_years
 from planner.infra.calendar.snapshot import SnapshotCalendar
 from planner.infra.db.base import create_engine, create_session_factory
 from planner.infra.db.repo import SqlAlchemyRepo
 from planner.infra.logging import configure_logging
 from planner.infra.scheduler import SchedulerDeps, register_jobs
-from planner.settings import get_settings
+from planner.settings import ensure_secure_config, get_settings
 from planner.web.app import create_app
 
 log = structlog.get_logger("planner.main")
 
 
+async def _load_calendar() -> SnapshotCalendar:
+    """Live production calendar when isdayoff.ru is reachable, else snapshot."""
+    year = date.today().year
+    try:
+        return await fetch_snapshot_for_years((year, year + 1))
+    except Exception as exc:  # noqa: BLE001 — offline fallback by design (spec 10)
+        log.warning("calendar_fetch_failed", error=str(exc))
+        return SnapshotCalendar()
+
+
 async def main() -> None:
     settings = get_settings()
+    ensure_secure_config(settings)
 
     configure_logging(json_logs=not settings.debug, level="DEBUG" if settings.debug else "INFO")
     parser_kind = "claude" if settings.anthropic_api_key else "basic-regex"
@@ -45,7 +58,7 @@ async def main() -> None:
     repo = SqlAlchemyRepo(session_factory)
 
     bot = Bot(token=settings.bot_token)
-    solver = GreedySolver(SnapshotCalendar())
+    solver = GreedySolver(await _load_calendar())
     dp = build_dispatcher(settings, build_parser(settings), repo, solver)
 
     app = create_app(repo, settings)
@@ -70,7 +83,8 @@ async def main() -> None:
             await bot.send_message(settings.team_chat_id, "Дневная сводка: активных планов нет.")
 
     async def _refresh_calendar() -> None:  # snapshot refresh hook (spec 11)
-        return None
+        solver.calendar = await _load_calendar()
+        log.info("calendar_refreshed")
 
     register_jobs(
         scheduler,

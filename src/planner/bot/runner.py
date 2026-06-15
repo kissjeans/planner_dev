@@ -19,6 +19,7 @@ from planner.bot.handlers import (
 )
 from planner.bot.middlewares.errors import ErrorBoundaryMiddleware
 from planner.bot.middlewares.permissions import ActorMiddleware
+from planner.bot.middlewares.throttle import ThrottleMiddleware
 from planner.domain.solver.ports import SolverPort
 from planner.infra.llm.basic import BasicIntentParser
 from planner.infra.llm.ports import IntentParserPort
@@ -57,6 +58,9 @@ def build_dispatcher(
     errors_mw = ErrorBoundaryMiddleware()
     dp.message.middleware(errors_mw)
     dp.callback_query.middleware(errors_mw)
+
+    throttle_mw = ThrottleMiddleware()
+    dp.message.middleware(throttle_mw)
 
     actor_mw = ActorMiddleware(settings.admin_id_set, repo)
     dp.message.middleware(actor_mw)

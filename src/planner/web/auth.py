@@ -12,7 +12,7 @@ import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from jose import JWTError, jwt
+import jwt
 
 JWT_ALGO = "HS256"
 JWT_TTL_HOURS = 12
@@ -49,5 +49,5 @@ def decode_jwt(token: str, secret: str) -> dict[str, Any] | None:
     try:
         claims: dict[str, Any] = jwt.decode(token, secret, algorithms=[JWT_ALGO])
         return claims
-    except JWTError:
+    except jwt.PyJWTError:
         return None

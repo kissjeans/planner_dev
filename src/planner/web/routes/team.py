@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Form, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from planner.app.ports import PersonRecord, RepoPort
-from planner.app.set_vacation import PersonNotFoundError, SetVacationUseCase
+from planner.app.set_vacation import SetVacationUseCase
 from planner.domain.intent import VacationIntent
 from planner.web.deps import current_user, get_repo, require_admin
 
@@ -23,7 +23,9 @@ def _actor(user: dict[str, Any]) -> PersonRecord:
         pid = UUID(sub)
     except (ValueError, TypeError):
         pid = uuid4()
-    return PersonRecord(id=pid, name=user.get("name", "—"), is_admin=True)
+    return PersonRecord(
+        id=pid, name=user.get("name", "—"), is_admin=bool(user.get("is_admin", False))
+    )
 
 
 @router.get("/team", response_class=HTMLResponse)
@@ -59,7 +61,5 @@ async def add_vacation(
         day_to=date.fromisoformat(day_to),
         capacity_h=capacity_h,
     )
-    import contextlib
-    with contextlib.suppress(PersonNotFoundError):
-        await SetVacationUseCase(repo).execute(intent, _actor(user))
+    await SetVacationUseCase(repo).execute(intent, _actor(user))
     return RedirectResponse("/team", status_code=status.HTTP_303_SEE_OTHER)

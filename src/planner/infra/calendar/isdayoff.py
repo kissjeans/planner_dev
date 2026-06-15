@@ -50,3 +50,21 @@ class IsDayOffClient:
         """Fetch the year and return a snapshot calendar seeded with its holidays."""
         offdays = await self.fetch_year_offdays(year)
         return SnapshotCalendar(holidays_from_offdays(offdays))
+
+
+_HTTP_TIMEOUT_S = 10.0
+
+
+async def fetch_snapshot_for_years(years: tuple[int, ...]) -> SnapshotCalendar:
+    """Fetch holiday data for several years and merge into one snapshot.
+
+    Opens its own bounded-timeout client; raises httpx errors to the caller —
+    the caller decides whether to fall back to the offline snapshot.
+    """
+    holidays: frozenset[date] = frozenset()
+    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_S) as client:
+        idc = IsDayOffClient(client)
+        for year in years:
+            offdays = await idc.fetch_year_offdays(year)
+            holidays = holidays | holidays_from_offdays(offdays)
+    return SnapshotCalendar(holidays)

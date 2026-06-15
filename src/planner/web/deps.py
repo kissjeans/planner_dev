@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
 
@@ -34,3 +35,13 @@ def require_admin(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any
     if not user.get("is_admin"):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Только админ.")
     return user
+
+
+def actor_id_from(user: dict[str, Any]) -> UUID | None:
+    """Return the actor's person UUID from the JWT ``sub``, or None when the
+    subject is not a real person id (e.g. the dev-login ``sub='dev'`` or a
+    ``tg:<id>`` subject for a user not yet in the team)."""
+    try:
+        return UUID(str(user.get("sub", "")))
+    except (ValueError, TypeError):
+        return None

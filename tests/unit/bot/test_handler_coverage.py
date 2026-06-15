@@ -71,6 +71,7 @@ class _FakeRepo:
         self._plans = list(plans)
         self.captured_tasks: list[str] = []
         self.assignments: list[tuple] = []
+        self.saved_tasks: list[tuple] = []
 
     async def get_solver_people(self) -> tuple:
         return self._people
@@ -86,9 +87,9 @@ class _FakeRepo:
         return None  # always create
 
     async def create_project(self, *, title, template_code, deadline,
-                             brief_return_date, actor_id):
+                             brief_return_date, actor_id, project_id=None):
         from planner.app.ports import ProjectRecord
-        return ProjectRecord(uuid4(), title, "planning", deadline)
+        return ProjectRecord(project_id or uuid4(), title, "planning", deadline)
 
     async def create_task(self, *, project_id, name, duration_hours, deadline, actor_id):
         from planner.app.ports import TaskRecord
@@ -104,6 +105,9 @@ class _FakeRepo:
 
     async def add_audit(self, *a):
         pass
+
+    async def save_project_tasks(self, project_id, tasks, assignments) -> None:
+        self.saved_tasks.append((project_id, tasks, assignments))
 
 
 # ---------------------------------------------------------------------------
@@ -163,18 +167,34 @@ def test_describe_intent_capture_task():
 
 @pytest.mark.asyncio
 async def test_handle_text_capture_writes_to_db():
+    from planner.app.ports import PersonRecord
     msg, answers = _message()
     repo = _FakeRepo()
     intent = CaptureTaskIntent(
         task_title="подготовить бриф", project_name="МТС", assignee_name="Призрак"
     )
+    actor_record = PersonRecord(id=uuid4(), name="Андрей", is_admin=False)
     await _handle_text(
         msg, "подготовить бриф по мтс", _FakeParser(intent),  # type: ignore[arg-type]
-        {"is_admin": False}, repo=repo,  # type: ignore[arg-type]
+        {"is_admin": False}, repo=repo, actor_record=actor_record,  # type: ignore[arg-type]
     )
     assert "Записал" in answers.calls[0]
     assert repo.captured_tasks == ["подготовить бриф"]
-    assert repo.assignments == []  # unknown assignee → not assigned
+    assert repo.assignments == []
+
+
+@pytest.mark.asyncio
+async def test_handle_text_unknown_sender_blocked_no_write():
+    msg, answers = _message()
+    repo = _FakeRepo()
+    intent = CaptureTaskIntent(task_title="запиши задачу")
+    # No actor_record, not admin → unknown sender.
+    await _handle_text(
+        msg, "запиши задачу", _FakeParser(intent),  # type: ignore[arg-type]
+        {"is_admin": False}, repo=repo,  # type: ignore[arg-type]
+    )
+    assert "Не узнал тебя" in answers.calls[0]
+    assert repo.captured_tasks == []  # nothing written
 
 
 @pytest.mark.asyncio
@@ -499,7 +519,7 @@ async def test_handle_voice_with_stt_transcribes_and_routes():
         get_file=AsyncMock(return_value=file_obj),
         download_file=AsyncMock(return_value=audio_buf),
     )
-    msg.voice = SimpleNamespace(file_id="abc")
+    msg.voice = SimpleNamespace(file_id="abc", file_size=1000)
     msg.bot = bot
 
     stt = SimpleNamespace(transcribe=AsyncMock(return_value="загрузка команды"))
@@ -523,7 +543,7 @@ async def test_handle_voice_stt_returns_empty_string():
         get_file=AsyncMock(return_value=file_obj),
         download_file=AsyncMock(return_value=audio_buf),
     )
-    msg.voice = SimpleNamespace(file_id="abc")
+    msg.voice = SimpleNamespace(file_id="abc", file_size=1000)
     msg.bot = bot
 
     stt = SimpleNamespace(transcribe=AsyncMock(return_value=""))
@@ -546,6 +566,32 @@ async def test_handle_voice_no_stt_replies_unsupported():
 
 
 @pytest.mark.asyncio
+async def test_handle_voice_rejects_oversized():
+    from planner.bot.handlers.task_router import handle_voice
+    intent = ClarifyIntent(question="X")
+    msg, answers = _message()
+    msg.voice = SimpleNamespace(file_id="abc", file_size=50 * 1024 * 1024)  # 50 MB
+    msg.bot = SimpleNamespace()  # must not be used — size check is first
+    stt = SimpleNamespace(transcribe=AsyncMock())
+    await handle_voice(msg, _FakeParser(intent), {"is_admin": False}, stt=stt)  # type: ignore[arg-type]
+    assert "слишком большое" in answers.calls[0]
+    assert not stt.transcribe.called
+
+
+@pytest.mark.asyncio
+async def test_handle_voice_missing_file_path():
+    from planner.bot.handlers.task_router import handle_voice
+    intent = ClarifyIntent(question="X")
+    msg, answers = _message()
+    msg.voice = SimpleNamespace(file_id="abc", file_size=1000)
+    file_obj = SimpleNamespace(file_path=None)
+    msg.bot = SimpleNamespace(get_file=AsyncMock(return_value=file_obj))
+    stt = SimpleNamespace(transcribe=AsyncMock())
+    await handle_voice(msg, _FakeParser(intent), {"is_admin": False}, stt=stt)  # type: ignore[arg-type]
+    assert "Не удалось получить" in answers.calls[0]
+
+
+@pytest.mark.asyncio
 async def test_handle_mention_only_botname_no_text_ignored():
     """task_router.py:263 — message is '@bot' with nothing after → return."""
     from planner.bot.handlers.task_router import handle_mention_or_dm
@@ -556,3 +602,52 @@ async def test_handle_mention_only_botname_no_text_ignored():
     parser = _FakeParser(intent)
     await handle_mention_or_dm(msg, parser, {"is_admin": False})  # type: ignore[arg-type]
     assert len(answers.calls) == 0  # no reply
+
+
+# ---------------------------------------------------------------------------
+# handle_edit_text — supersede old proposal on successful re-plan
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_handle_edit_text_supersedes_old_proposal():
+    from datetime import timedelta
+
+    from planner.app.add_project import ProjectTemplate, TemplateTaskSpec
+    from planner.app.ports import PersonRecord, PlanVersionRecord, ProjectRecord
+    from planner.bot.handlers.task_router import handle_edit_text
+    from planner.domain.calendar.rules import WeekendCalendar
+    from planner.domain.models import Person
+    from planner.domain.solver.greedy import GreedySolver
+    from tests.unit.app.conftest import FakeRepo
+
+    andrey = Person(id=uuid4(), name="Андрей", capacity_h=8)
+    repo = FakeRepo()
+    repo.solver_people = (andrey,)
+    repo.templates = {
+        "standard": ProjectTemplate(
+            code="standard", tasks=(TemplateTaskSpec(1, "Бриф", 8, (andrey.id,)),)
+        )
+    }
+    # Pre-existing proposed plan + its project (the one being edited).
+    old_project_id = uuid4()
+    repo.projects[old_project_id] = ProjectRecord(old_project_id, "Старый", "planning", None)
+    old_pv = PlanVersionRecord(uuid4(), old_project_id, "proposed", {})
+    repo.plan_versions[old_pv.id] = old_pv
+
+    actor_record = PersonRecord(id=uuid4(), name="Менеджер", is_admin=True)
+    intent = AddProjectIntent(
+        title="Новый", template_code="standard",
+        deadline=date.today() + timedelta(days=30),
+    )
+    msg, answers = _message("правка: новый план")
+    state = SimpleNamespace(
+        clear=AsyncMock(),
+        get_data=AsyncMock(return_value={"pending_pv_id": str(old_pv.id)}),
+    )
+    await handle_edit_text(
+        msg, state, _FakeParser(intent), {"is_admin": True},  # type: ignore[arg-type]
+        repo=repo, solver=GreedySolver(WeekendCalendar()), actor_record=actor_record,
+    )
+    assert repo.plan_versions[old_pv.id].status == "superseded"
+    assert repo.projects[old_project_id].status == "cancelled"
+    assert state.clear.called

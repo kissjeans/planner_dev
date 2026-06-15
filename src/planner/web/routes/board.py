@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from planner.app.admin_board import AdminBoardUseCase, Board
 from planner.app.ports import RepoPort
-from planner.web.deps import current_user, get_repo, require_admin
+from planner.web.deps import actor_id_from, current_user, get_repo, require_admin
 
 router = APIRouter()
 
@@ -75,6 +75,6 @@ async def reassign(
     moved = await repo.set_task_assignee(tid, pid)
     if moved:
         await repo.add_audit(
-            None, "reassign_task", "task", tid, {"person_id": person_id}
+            actor_id_from(user), "reassign_task", "task", tid, {"person_id": person_id}
         )
     return RedirectResponse("/schedule", status_code=status.HTTP_303_SEE_OTHER)

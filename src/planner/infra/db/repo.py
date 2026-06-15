@@ -8,10 +8,11 @@ objects (Law of Demeter, spec section 0).
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from planner.app.add_project import ProjectTemplate, TemplateTaskSpec
@@ -24,7 +25,15 @@ from planner.app.ports import (
     TaskMeta,
     TaskRecord,
 )
-from planner.domain.models import Person as DomainPerson
+from planner.domain.models import (
+    Assignment as DomainAssignment,
+)
+from planner.domain.models import (
+    Person as DomainPerson,
+)
+from planner.domain.models import (
+    Task as DomainTask,
+)
 from planner.infra.db.models import (
     Assignment,
     AuditLog,
@@ -78,6 +87,26 @@ class SqlAlchemyRepo:
             if pv is not None:
                 pv.status = status
 
+    async def transition_plan_status(
+        self, pv_id: UUID, from_status: str, to_status: str
+    ) -> bool:
+        """Atomically move a plan version from one status to another.
+
+        Returns True iff exactly this transition happened — a concurrent
+        competitor loses because the WHERE clause no longer matches.
+        """
+        async with self._sf() as s, s.begin():
+            result = cast(
+                CursorResult[Any],
+                await s.execute(
+                    update(PlanVersion)
+                    .where(PlanVersion.id == pv_id)
+                    .where(PlanVersion.status == from_status)
+                    .values(status=to_status)
+                ),
+            )
+            return bool(result.rowcount)
+
     async def save_plan_version(
         self, project_id: UUID, status: str, payload: dict[str, Any], actor_id: UUID | None
     ) -> PlanVersionRecord:
@@ -103,8 +132,9 @@ class SqlAlchemyRepo:
         brief_return_date: date | None,
         actor_id: UUID | None,
         priority: str = "medium",
+        project_id: UUID | None = None,
     ) -> ProjectRecord:
-        project_id = uuid4()
+        project_id = project_id or uuid4()
         async with self._sf() as s, s.begin():
             template_id = await s.scalar(
                 select(Template.id).where(Template.code == template_code)
@@ -223,6 +253,12 @@ class SqlAlchemyRepo:
             t = await s.get(Task, task_id)
             if t is not None:
                 t.status = status
+
+    async def set_project_status(self, project_id: UUID, status: str) -> None:
+        async with self._sf() as s, s.begin():
+            p = await s.get(Project, project_id)
+            if p is not None:
+                p.status = status
 
     async def add_audit(
         self,
@@ -460,6 +496,40 @@ class SqlAlchemyRepo:
                 for tt in tt_rows
             )
         return ProjectTemplate(code=code, tasks=specs)
+
+    async def save_project_tasks(
+        self,
+        project_id: UUID,
+        tasks: tuple[DomainTask, ...],
+        assignments: tuple[DomainAssignment, ...],
+    ) -> None:
+        """Persist instantiated template tasks with their planned schedule.
+
+        One transaction: either the whole task set lands or none of it.
+        """
+        by_task = {a.task_id: a for a in assignments}
+        async with self._sf() as s, s.begin():
+            for t in tasks:
+                a = by_task.get(t.id)
+                s.add(
+                    Task(
+                        id=t.id,
+                        project_id=project_id,
+                        name=t.name,
+                        duration_hours=t.duration_hours,
+                        start_date=a.start_date if a else None,
+                        end_date=a.end_date if a else None,
+                        status="not_done",
+                    )
+                )
+                if a is not None:
+                    s.add(
+                        Assignment(
+                            task_id=t.id,
+                            person_id=a.person_id,
+                            hours=t.duration_hours,
+                        )
+                    )
 
     async def list_audit(self, limit: int = 50, offset: int = 0) -> list[AuditRecord]:
         async with self._sf() as s:

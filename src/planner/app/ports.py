@@ -12,6 +12,9 @@ from datetime import date
 from typing import Any, Protocol
 from uuid import UUID
 
+from planner.domain.models import Assignment as DomainAssignment
+from planner.domain.models import Task as DomainTask
+
 
 @dataclass(frozen=True)
 class PersonRecord:
@@ -95,6 +98,10 @@ class RepoPort(Protocol):
 
     async def set_plan_version_status(self, pv_id: UUID, status: str) -> None: ...
 
+    async def transition_plan_status(
+        self, pv_id: UUID, from_status: str, to_status: str
+    ) -> bool: ...
+
     async def save_plan_version(
         self, project_id: UUID, status: str, payload: dict[str, Any], actor_id: UUID | None
     ) -> PlanVersionRecord: ...
@@ -134,6 +141,7 @@ class RepoPort(Protocol):
         brief_return_date: date | None,
         actor_id: UUID | None,
         priority: str = "medium",
+        project_id: UUID | None = None,
     ) -> ProjectRecord: ...
 
     async def list_committed_plans_with_project(
@@ -206,3 +214,12 @@ class RepoPort(Protocol):
     ) -> None: ...
 
     async def set_task_status(self, task_id: UUID, status: str) -> None: ...
+
+    async def set_project_status(self, project_id: UUID, status: str) -> None: ...
+
+    async def save_project_tasks(
+        self,
+        project_id: UUID,
+        tasks: tuple[DomainTask, ...],
+        assignments: tuple[DomainAssignment, ...],
+    ) -> None: ...

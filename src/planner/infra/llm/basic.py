@@ -35,18 +35,21 @@ _RANGE = re.compile(r"(\d{1,2})\s*[-–—]\s*(\d{1,2})\s+([а-яё]+)", re.IGNO
 
 
 def _parse_date(text: str, today: date) -> date | None:
-    m = _ISO.search(text)
-    if m:
-        return date(int(m[1]), int(m[2]), int(m[3]))
-    m = _DDMM.search(text)
-    if m:
-        year = int(m[3]) if m[3] else today.year
-        return date(year, int(m[2]), int(m[1]))
-    m = _DM.search(text)
-    if m:
-        month = _month_num(m[2])
-        if month:
-            return date(today.year, month, int(m[1]))
+    try:
+        m = _ISO.search(text)
+        if m:
+            return date(int(m[1]), int(m[2]), int(m[3]))
+        m = _DDMM.search(text)
+        if m:
+            year = int(m[3]) if m[3] else today.year
+            return date(year, int(m[2]), int(m[1]))
+        m = _DM.search(text)
+        if m:
+            month = _month_num(m[2])
+            if month:
+                return date(today.year, month, int(m[1]))
+    except ValueError:
+        return None  # out-of-range numbers → treat as no date found
     return None
 
 
@@ -99,6 +102,14 @@ class BasicIntentParser:
         if low in {"ок", "ok", "да", "yes", "confirm", "подтверждаю"}:
             return ConfirmIntent()
 
+        _delete_kw = ("удали", "удалить", "удаление", "убери", "drop", "delete")
+        if "проект" in low and any(k in low for k in _delete_kw):
+            title_m = _QUOTE.search(text)
+            return WhatIfIntent(
+                operation="drop_project",
+                project_title=title_m[1].strip() if title_m else None,
+            )
+
         if any(k in low for k in ("проект", "project", "новый проект", "add")):
             title_m = _QUOTE.search(text)
             if title_m:
@@ -132,8 +143,11 @@ class BasicIntentParser:
         if person and rng:
             month = _month_num(rng[3])
             if month:
-                d_from = date(ctx.today.year, month, int(rng[1]))
-                d_to = date(ctx.today.year, month, int(rng[2]))
+                try:
+                    d_from = date(ctx.today.year, month, int(rng[1]))
+                    d_to = date(ctx.today.year, month, int(rng[2]))
+                except ValueError:
+                    return ClarifyIntent(question="Укажи имя и корректные даты отпуска.")
                 return VacationIntent(
                     person_name=person, day_from=d_from, day_to=d_to
                 )

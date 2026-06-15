@@ -140,3 +140,44 @@ def test_parse_date_dm_unknown_month_returns_none():
     """_DM matches but _month_num returns None → returns None."""
     result = _parse_date("срок 15 зелёного", date(2026, 6, 4))
     assert result is None
+
+
+def test_parse_date_out_of_range_ddmm_returns_none():
+    """'32.13' is out of range — must return None, not raise ValueError."""
+    assert _parse_date("дедлайн 32.13", date(2026, 6, 4)) is None
+
+
+def test_parse_date_out_of_range_iso_returns_none():
+    assert _parse_date("2026-99-99", date(2026, 6, 4)) is None
+
+
+def test_capture_with_bad_date_does_not_crash():
+    """A task-like message with a bad date is still captured (no crash)."""
+    i = P.parse_sync("сделать отчёт к 99.99", CTX)
+    assert i.kind == "capture_task"
+    assert i.deadline is None
+
+
+def test_vacation_out_of_range_returns_clarify():
+    i = P.parse_sync("отпуск Айгуль 40-50 июня", CTX)
+    assert i.kind == "clarify"
+
+
+def test_delete_project_not_classified_as_create():
+    i = P.parse_sync('удали проект «Альфа»', CTX)
+    assert i.kind == "what_if"
+    assert i.operation == "drop_project"
+    assert i.project_title == "Альфа"
+
+
+def test_remove_project_phrasing_drops():
+    i = P.parse_sync('убери проект "Бета"', CTX)
+    assert i.kind == "what_if"
+    assert i.operation == "drop_project"
+
+
+def test_create_project_still_works():
+    """Guard must not break the normal create path."""
+    i = P.parse_sync('создать проект "Гамма", шаблон standard', CTX)
+    assert i.kind == "add_project"
+    assert i.title == "Гамма"

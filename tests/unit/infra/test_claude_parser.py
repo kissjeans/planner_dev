@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -167,3 +168,30 @@ async def test_explain_plan_skips_non_text_blocks():
 
     result = await parser.explain_plan("summary")
     assert result == "OK"
+
+
+@pytest.mark.asyncio
+async def test_client_constructed_with_timeout_and_retries(monkeypatch):
+    captured: dict = {}
+
+    class _FakeAnthropic:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    import anthropic
+    monkeypatch.setattr(anthropic, "AsyncAnthropic", _FakeAnthropic)
+    from planner.infra.llm.claude import ClaudeIntentParser
+    ClaudeIntentParser("key")
+    assert captured["timeout"] == 10.0
+    assert captured["max_retries"] == 1
+
+
+@pytest.mark.asyncio
+async def test_explain_plan_falls_back_to_summary_on_error():
+    from planner.infra.llm.claude import ClaudeIntentParser
+    p = ClaudeIntentParser("key")
+    p._client = SimpleNamespace(
+        messages=SimpleNamespace(create=AsyncMock(side_effect=RuntimeError("down")))
+    )
+    out = await p.explain_plan("сводка плана")
+    assert out == "сводка плана"

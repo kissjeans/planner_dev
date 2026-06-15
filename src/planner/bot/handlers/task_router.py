@@ -43,6 +43,7 @@ from planner.infra.llm.ports import ChatContext, IntentParserPort
 from planner.infra.stt.whisper import STTPort
 
 router = Router(name="task")
+_MAX_VOICE_BYTES = 20 * 1024 * 1024  # 20 MB cap on voice downloads
 
 
 def _plan_keyboard(pv_id: UUID) -> InlineKeyboardMarkup:
@@ -151,26 +152,37 @@ async def _handle_text(
     solver: SolverPort | None = None,
     actor_record: PersonRecord | None = None,
     explain_uc: ExplainPlanUseCase | None = None,
-) -> None:
+) -> UUID | None:
+    # Known-sender gate (spec 16 + QA H1/H2): only resolved team members or
+    # admins may have their messages parsed/acted on. This blocks strangers
+    # from writing to the DB and from spending the LLM budget. When repo is
+    # None we are in degraded/echo mode (no DB) — skip the gate so the bot can
+    # still interpret messages offline.
+    if repo is not None and actor_record is None and not actor.get("is_admin", False):
+        await message.answer(
+            "Не узнал тебя — я отвечаю только участникам команды. "
+            "Попроси администратора добавить тебя."
+        )
+        return None
     ctx = ChatContext(today=date.today())
     intent = await parser.parse(text, ctx)
 
     if isinstance(intent, ClarifyIntent):
         await message.answer(describe_intent(intent))
-        return
+        return None
 
     if isinstance(intent, CaptureTaskIntent):
         if repo is None:
             await message.answer(describe_intent(intent))
-            return
+            return None
         await message.answer(
             await build_capture_reply(intent, repo=repo, actor_record=actor_record)
         )
-        return
+        return None
 
     if not can_execute(intent.kind, actor.get("is_admin", False)):
         await message.answer("Только админ может править план.")
-        return
+        return None
 
     if (
         isinstance(intent, AddProjectIntent)
@@ -178,7 +190,7 @@ async def _handle_text(
         and solver is not None
         and actor_record is not None
     ):
-        text, pv_id = await build_add_project_reply(
+        reply_text, pv_id = await build_add_project_reply(
             intent,
             repo=repo,
             solver=solver,
@@ -187,10 +199,11 @@ async def _handle_text(
             explain_uc=explain_uc,
         )
         kb = _plan_keyboard(pv_id) if pv_id is not None else None
-        await message.answer(text, reply_markup=kb)
-        return
+        await message.answer(reply_text, reply_markup=kb)
+        return pv_id
 
     await message.answer(describe_intent(intent))
+    return None
 
 
 @router.message(F.voice)
@@ -208,10 +221,17 @@ async def handle_voice(
         await message.answer("Голосовые сообщения не поддерживаются — напиши текстом.")
         return
     bot = message.bot
+    if message.voice.file_size and message.voice.file_size > _MAX_VOICE_BYTES:
+        await message.answer("Голосовое слишком большое — пришли покороче или текстом.")
+        return
     file = await bot.get_file(message.voice.file_id)
-    assert file.file_path is not None
+    if file.file_path is None:
+        await message.answer("Не удалось получить голосовое сообщение — напиши текстом.")
+        return
     audio = await bot.download_file(file.file_path)
-    assert audio is not None
+    if audio is None:
+        await message.answer("Не удалось скачать голосовое сообщение — напиши текстом.")
+        return
     text = await stt.transcribe(audio.read(), "voice.ogg")
     if not text:
         await message.answer("Не удалось распознать голос — напиши текстом.")
@@ -264,10 +284,27 @@ async def handle_edit_text(
     text = (message.text or "").strip()
     if not text:
         return
-    await _handle_text(
+    new_pv_id = await _handle_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
     )
+    # The edit produced a fresh proposal: retire the one it replaces so the
+    # project list does not accumulate near-duplicate planning rows.
+    if new_pv_id is not None and repo is not None:
+        data = await state.get_data()
+        old_raw = data.get("pending_pv_id")
+        if old_raw:
+            try:
+                old_pv_id = UUID(str(old_raw))
+            except ValueError:
+                old_pv_id = None
+            if old_pv_id is not None and old_pv_id != new_pv_id:
+                old_pv = await repo.get_plan_version(old_pv_id)
+                superseded = await repo.transition_plan_status(
+                    old_pv_id, "proposed", "superseded"
+                )
+                if superseded and old_pv is not None:
+                    await repo.set_project_status(old_pv.project_id, "cancelled")
     # Clear edit state so subsequent messages go through the normal handler.
     await state.clear()
 

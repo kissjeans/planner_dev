@@ -26,7 +26,7 @@ dependencies = [
     "matplotlib",
     "seaborn",
     "redis[hiredis]",
-    "python-jose[cryptography]",
+    "pyjwt>=2.8",
     "pyyaml",
 ]
 

@@ -74,7 +74,7 @@ class WebFakeRepo:
         self.overrides.append((person_id, day, capacity_h, reason))
 
     async def add_audit(self, actor_id, action, entity_type, entity_id, payload):
-        self.audits.append((action, entity_type))
+        self.audits.append((actor_id, action, entity_type))
 
     async def list_project_tasks(self, project_id):
         return [TaskRecord(id=_TASK_ID, name="Бриф", status="open",
@@ -253,21 +253,30 @@ def test_reassign_blocked_for_member(client):
     assert r.status_code == 403
 
 
-def test_dev_login_disabled_without_debug(client):
-    r = client.get("/dev-login", follow_redirects=False)
+def test_dev_login_disabled_without_debug():
+    # debug off → 404 even from loopback
+    app = create_app(WebFakeRepo(), _settings())  # _settings() has debug=False
+    c = TestClient(app, client=("127.0.0.1", 5000))
+    r = c.get("/dev-login", follow_redirects=False)
     assert r.status_code == 404
 
 
-def test_dev_login_mints_admin_session_when_debug():
+def test_dev_login_mints_admin_session_from_loopback():
     settings = _settings().model_copy(update={"debug": True})
     app = create_app(WebFakeRepo(), settings)
-    c = TestClient(app)
+    c = TestClient(app, client=("127.0.0.1", 5000))
     r = c.get("/dev-login", follow_redirects=False)
     assert r.status_code == 303
     assert r.headers["location"] == "/plan"
     assert c.cookies.get(COOKIE_NAME)
-    # the minted session reaches an admin-only page
-    assert c.get("/plan").status_code == 200
+
+
+def test_dev_login_rejected_from_non_loopback_even_with_debug():
+    settings = _settings().model_copy(update={"debug": True})
+    app = create_app(WebFakeRepo(), settings)
+    c = TestClient(app, client=("10.0.0.5", 5000))  # LAN peer
+    r = c.get("/dev-login", follow_redirects=False)
+    assert r.status_code == 404
 
 
 def test_logout_clears_cookie(client):
@@ -284,8 +293,8 @@ def test_team_list_renders(client):
     assert "Айгуль" in r.text
 
 
-def test_vacation_unknown_person_still_redirects(client):
-    """PersonNotFoundError is suppressed — redirect happens anyway."""
+def test_vacation_unknown_person_returns_404(client):
+    """Setting vacation for someone not in the team is an error, not a silent ok."""
     _auth(client, is_admin=True)
     r = client.post(
         "/team/vacation",
@@ -293,7 +302,7 @@ def test_vacation_unknown_person_still_redirects(client):
               "day_to": "2026-06-10", "capacity_h": "0"},
         follow_redirects=False,
     )
-    assert r.status_code == 303
+    assert r.status_code == 404
 
 
 def _error_client(exc_type):
@@ -365,3 +374,60 @@ def test_telegram_login_callback_sets_cookie(client):
     assert r.status_code == 303
     assert r.headers["location"] == "/plan"
     assert COOKIE_NAME in r.headers.get("set-cookie", "")
+
+
+# ---------------------------------------------------------------------------
+# Plan 005: input validation — 400/422 for malformed admin input
+# ---------------------------------------------------------------------------
+
+def test_edit_task_bad_date_returns_400(client):
+    _auth(client, is_admin=True)
+    r = client.post(
+        f"/plan/{_PROJECT_ID}/task/{_TASK_ID}/edit",
+        data={"start": "not-a-date", "end": ""},
+        follow_redirects=False,
+    )
+    assert r.status_code == 400
+
+
+def test_vacation_bad_date_returns_400(client):
+    _auth(client, is_admin=True)
+    r = client.post(
+        "/team/vacation",
+        data={"person_name": "Айгуль", "day_from": "32.13.2026",
+              "day_to": "2026-06-11", "capacity_h": "0"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 400
+
+
+def test_reassign_non_uuid_returns_400(client):
+    _auth(client, is_admin=True)
+    r = client.post(
+        "/schedule/reassign",
+        data={"task_id": "not-a-uuid", "person_id": "also-bad"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 400
+
+
+def test_audit_negative_offset_returns_422(client):
+    _auth(client)
+    assert client.get("/audit?offset=-1").status_code == 422
+    assert client.get("/audit?limit=-1").status_code == 422
+
+
+def test_reassign_records_actor_id(client):
+    from uuid import UUID
+    sub = str(uuid4())
+    token = create_jwt({"sub": sub, "name": "Admin", "is_admin": True}, JWT_SECRET)
+    client.cookies.set(COOKIE_NAME, token)
+    pid = client.repo.people["Айгуль"].id  # type: ignore[attr-defined]
+    r = client.post(
+        "/schedule/reassign",
+        data={"task_id": str(_TASK_ID), "person_id": str(pid)},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    recorded_actor = client.repo.audits[0][0]  # type: ignore[attr-defined]
+    assert recorded_actor == UUID(sub)
