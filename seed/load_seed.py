@@ -172,9 +172,16 @@ async def load_capability(
         r.name: r for r in (await session.execute(select(Role))).scalars().all()
     }
 
-    # Rebuild join tables for a clean re-run.
-    await session.execute(delete(RoleSkill))
-    await session.execute(delete(PersonRole))
+    # Idempotent re-run: load existing join rows and skip duplicate inserts.
+    # Never globally delete — that would wipe links the seed does not manage.
+    existing_role_skills = {
+        (rs.role_id, rs.skill_id)
+        for rs in (await session.execute(select(RoleSkill))).scalars().all()
+    }
+    existing_person_roles = {
+        (pr.person_id, pr.role_id)
+        for pr in (await session.execute(select(PersonRole))).scalars().all()
+    }
 
     for entry in raw["roles"]:
         role = roles_by_name.get(entry["name"])
@@ -193,7 +200,9 @@ async def load_capability(
                 session.add(skill)
                 skills_by_name[sk["name"]] = skill
                 await session.flush()
-            session.add(RoleSkill(role_id=role.id, skill_id=skill.id))
+            if (role.id, skill.id) not in existing_role_skills:
+                session.add(RoleSkill(role_id=role.id, skill_id=skill.id))
+                existing_role_skills.add((role.id, skill.id))
 
     # Link people to roles by role_label.
     for person in people_map.values():
@@ -201,8 +210,9 @@ async def load_capability(
         if not label:
             continue
         role = roles_by_name.get(label)
-        if role is not None:
+        if role is not None and (person.id, role.id) not in existing_person_roles:
             session.add(PersonRole(person_id=person.id, role_id=role.id))
+            existing_person_roles.add((person.id, role.id))
 
     await session.flush()
 

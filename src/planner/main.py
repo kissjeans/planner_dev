@@ -72,15 +72,20 @@ async def main() -> None:
         from datetime import date
 
         from aiogram.types import BufferedInputFile
-        png = await build_load_image(repo, start=date.today())
-        if png:
-            await bot.send_photo(
-                settings.team_chat_id,
-                BufferedInputFile(png, filename="load.png"),
-                caption="Дневная сводка нагрузки команды.",
-            )
-        else:
-            await bot.send_message(settings.team_chat_id, "Дневная сводка: активных планов нет.")
+        try:
+            png = await build_load_image(repo, start=date.today())
+            if png:
+                await bot.send_photo(
+                    settings.team_chat_id,
+                    BufferedInputFile(png, filename="load.png"),
+                    caption="Дневная сводка нагрузки команды.",
+                )
+            else:
+                await bot.send_message(
+                    settings.team_chat_id, "Дневная сводка: активных планов нет."
+                )
+        except Exception:
+            log.exception("daily_summary_failed")
 
     async def _refresh_calendar() -> None:  # snapshot refresh hook (spec 11)
         solver.calendar = await _load_calendar()
@@ -94,10 +99,14 @@ async def main() -> None:
             timezone=settings.timezone,
         ),
     )
-    scheduler.start()
-
-    log.info("running", web="http://0.0.0.0:8000", polling=True)
-    await asyncio.gather(dp.start_polling(bot), server.serve())
+    try:
+        scheduler.start()
+        log.info("running", web="http://0.0.0.0:8000", polling=True)
+        await asyncio.gather(dp.start_polling(bot), server.serve())
+    finally:
+        scheduler.shutdown(wait=False)
+        await bot.session.close()
+        await engine.dispose()
 
 
 if __name__ == "__main__":  # pragma: no cover

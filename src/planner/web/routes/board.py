@@ -6,20 +6,21 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Form, Request, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from planner.app.admin_board import AdminBoardUseCase, Board
-from planner.app.ports import RepoPort
+from planner.app.ports import PersonRecord, RepoPort
 from planner.web.deps import actor_id_from, current_user, get_repo, require_admin
 
 router = APIRouter()
 
 
-async def _build_board(repo: RepoPort) -> Board:
+async def _build_board(repo: RepoPort) -> tuple[Board, list[PersonRecord]]:
     tasks = await repo.list_tasks_with_meta()
     people = await repo.list_people()
-    return AdminBoardUseCase().build(tasks=tasks, people=people, start=date.today())
+    board = AdminBoardUseCase().build(tasks=tasks, people=people, start=date.today())
+    return board, people
 
 
 @router.get("/schedule", response_class=HTMLResponse)
@@ -28,8 +29,7 @@ async def schedule_page(
     user: dict[str, Any] = Depends(current_user),
     repo: RepoPort = Depends(get_repo),
 ) -> HTMLResponse:
-    board = await _build_board(repo)
-    people = await repo.list_people()
+    board, people = await _build_board(repo)
     response: HTMLResponse = request.app.state.templates.TemplateResponse(
         request, "schedule.html", {"board": board, "people": people, "user": user}
     )
@@ -42,7 +42,7 @@ async def calendar_page(
     user: dict[str, Any] = Depends(current_user),
     repo: RepoPort = Depends(get_repo),
 ) -> HTMLResponse:
-    board = await _build_board(repo)
+    board, _ = await _build_board(repo)
     response: HTMLResponse = request.app.state.templates.TemplateResponse(
         request, "calendar.html", {"board": board, "user": user}
     )
@@ -55,7 +55,7 @@ async def load_board_page(
     user: dict[str, Any] = Depends(current_user),
     repo: RepoPort = Depends(get_repo),
 ) -> HTMLResponse:
-    board = await _build_board(repo)
+    board, _ = await _build_board(repo)
     response: HTMLResponse = request.app.state.templates.TemplateResponse(
         request, "load.html", {"board": board, "user": user}
     )
@@ -71,7 +71,10 @@ async def reassign(
 ) -> RedirectResponse:
     if not person_id.strip():
         return RedirectResponse("/schedule", status_code=status.HTTP_303_SEE_OTHER)
-    tid, pid = UUID(task_id), UUID(person_id)
+    try:
+        tid, pid = UUID(task_id), UUID(person_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="bad id") from exc
     moved = await repo.set_task_assignee(tid, pid)
     if moved:
         await repo.add_audit(

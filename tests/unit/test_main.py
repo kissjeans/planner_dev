@@ -35,12 +35,16 @@ async def test_main_wires_and_runs():
         _run_main_mocked()
     )
 
+    fake_engine = MagicMock()
+    fake_engine.dispose = AsyncMock()
+    fake_bot = MagicMock()
+    fake_bot.session.close = AsyncMock()
     with (
         patch.object(main_mod, "get_settings", return_value=fake_settings),
-        patch.object(main_mod, "create_engine", return_value=MagicMock()),
+        patch.object(main_mod, "create_engine", return_value=fake_engine),
         patch.object(main_mod, "create_session_factory", return_value=MagicMock()),
         patch.object(main_mod, "SqlAlchemyRepo", return_value=MagicMock()),
-        patch.object(main_mod, "Bot", return_value=MagicMock()),
+        patch.object(main_mod, "Bot", return_value=fake_bot),
         patch.object(main_mod, "GreedySolver", return_value=MagicMock()),
         patch.object(main_mod, "SnapshotCalendar", return_value=MagicMock()),
         patch.object(main_mod, "_load_calendar", new=AsyncMock(return_value=MagicMock())),
@@ -69,13 +73,16 @@ async def test_daily_summary_with_png():
     fake_bot = MagicMock()
     fake_bot.send_photo = AsyncMock()
     fake_bot.send_message = AsyncMock()
+    fake_bot.session.close = AsyncMock()
+    fake_engine = MagicMock()
+    fake_engine.dispose = AsyncMock()
 
     fake_calendar_sentinel = MagicMock()
     fake_solver = MagicMock()
 
     with (
         patch.object(main_mod, "get_settings", return_value=fake_settings),
-        patch.object(main_mod, "create_engine", return_value=MagicMock()),
+        patch.object(main_mod, "create_engine", return_value=fake_engine),
         patch.object(main_mod, "create_session_factory", return_value=MagicMock()),
         patch.object(main_mod, "SqlAlchemyRepo", return_value=MagicMock()),
         patch.object(main_mod, "Bot", return_value=fake_bot),
