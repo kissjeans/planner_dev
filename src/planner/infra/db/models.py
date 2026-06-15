@@ -172,6 +172,7 @@ class Project(Base):
     )
     brief_return_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
+    priority: Mapped[str] = mapped_column(Text, nullable=False, default="medium")
     status: Mapped[str] = mapped_column(Text, nullable=False, default="planning")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

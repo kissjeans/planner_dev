@@ -168,6 +168,130 @@ async def test_create_project_no_template(repo, db_session_factory):
 
 
 # ---------------------------------------------------------------------------
+# capture flow: get_project_by_title + create_task + assign_task
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_create_project_with_priority_and_list(repo, db_session_factory):
+    rec = await repo.create_project(
+        title="Приоритетный", template_code="nonexistent",
+        deadline=date(2026, 7, 1), brief_return_date=None,
+        actor_id=None, priority="high",
+    )
+    assert rec.priority == "high"
+    listed = await repo.list_projects()
+    found = next(p for p in listed if p.id == rec.id)
+    assert found.priority == "high"
+    assert found.start_date is not None  # created_at.date()
+    async with db_session_factory() as s, s.begin():
+        await s.execute(text("DELETE FROM projects WHERE id = :id"), {"id": rec.id})
+
+
+@pytest.mark.asyncio
+async def test_get_task_name_map(repo, task_row):
+    names = await repo.get_task_name_map()
+    assert names.get(task_row) == "Интег задача"
+
+
+@pytest.mark.asyncio
+async def test_list_tasks_with_meta_and_set_assignee(
+    repo, task_row, person, db_session_factory
+):
+    metas = await repo.list_tasks_with_meta()
+    mine = next(m for m in metas if m.task_id == task_row)
+    assert mine.project_title == "Интег Проект"
+    assert mine.assignee_name is None  # no assignment yet
+
+    assert await repo.set_task_assignee(task_row, person, 8) is True
+    metas2 = await repo.list_tasks_with_meta()
+    mine2 = next(m for m in metas2 if m.task_id == task_row)
+    assert mine2.assignee_name == "Интег Тест"
+    # reassign again to the same person → exercises the delete-existing path
+    assert await repo.set_task_assignee(task_row, person, 4) is True
+    metas3 = await repo.list_tasks_with_meta()
+    assert sum(1 for m in metas3 if m.task_id == task_row) == 1  # not duplicated
+    # missing task → False
+    from uuid import uuid4 as _u
+    assert await repo.set_task_assignee(_u(), person, 8) is False
+    # cleanup the assignment so person/task fixtures can tear down
+    async with db_session_factory() as s, s.begin():
+        await s.execute(
+            text("DELETE FROM assignments WHERE task_id = :t"), {"t": task_row}
+        )
+
+
+@pytest.mark.asyncio
+async def test_committed_plans_with_project_and_reassign(repo, project, db_session_factory):
+    tid, old_p, new_p = uuid4(), uuid4(), uuid4()
+    pv_id = uuid4()
+    payload = {"assignments": [
+        {"task_id": str(tid), "person_id": str(old_p),
+         "allocations": [{"person_id": str(old_p), "day": "2026-06-08", "hours": 8}]}
+    ], "risks": [], "end_date": None}
+    async with db_session_factory() as s, s.begin():
+        s.add(PlanVersion(id=pv_id, project_id=project, status="committed",
+                          payload=payload))
+
+    pairs = await repo.list_committed_plans_with_project()
+    assert any(prj == project for prj, _ in pairs)
+
+    moved = await repo.reassign_in_plan(tid, new_p)
+    assert moved is True
+    assert await repo.reassign_in_plan(uuid4(), new_p) is False  # unknown task
+
+    async with db_session_factory() as s:
+        pv = await s.get(PlanVersion, pv_id)
+        a = pv.payload["assignments"][0]
+    assert a["person_id"] == str(new_p)
+    assert a["allocations"][0]["person_id"] == str(new_p)
+    async with db_session_factory() as s, s.begin():
+        await s.execute(text("DELETE FROM plan_versions WHERE id = :id"), {"id": pv_id})
+
+
+@pytest.mark.asyncio
+async def test_get_project_by_title_case_insensitive(repo, project):
+    rec = await repo.get_project_by_title("интег проект")  # lower-case query
+    assert rec is not None
+    assert rec.title == "Интег Проект"
+
+
+@pytest.mark.asyncio
+async def test_get_project_by_title_missing(repo):
+    assert await repo.get_project_by_title("нет такого") is None
+
+
+@pytest.mark.asyncio
+async def test_create_task_inserts_row(repo, project, db_session_factory):
+    rec = await repo.create_task(
+        project_id=project, name="Захваченная задача",
+        duration_hours=8, deadline=date(2026, 6, 20), actor_id=None,
+    )
+    assert rec.name == "Захваченная задача"
+    assert rec.end_date == date(2026, 6, 20)
+    async with db_session_factory() as s, s.begin():
+        await s.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": rec.id})
+
+
+@pytest.mark.asyncio
+async def test_assign_task_creates_and_updates(repo, task_row, person, db_session_factory):
+    await repo.assign_task(task_row, person, 8)
+    await repo.assign_task(task_row, person, 4)  # upsert path
+    async with db_session_factory() as s:
+        rows = list(
+            await s.execute(
+                text("SELECT hours FROM assignments WHERE task_id = :t"),
+                {"t": task_row},
+            )
+        )
+    assert len(rows) == 1
+    assert rows[0][0] == 4
+    async with db_session_factory() as s, s.begin():
+        await s.execute(
+            text("DELETE FROM assignments WHERE task_id = :t"), {"t": task_row}
+        )
+
+
+# ---------------------------------------------------------------------------
 # get_committed_plan
 # ---------------------------------------------------------------------------
 

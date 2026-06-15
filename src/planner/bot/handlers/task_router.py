@@ -21,12 +21,14 @@ from planner.app.add_project import (
     InvalidProjectError,
     deserialize_allocations,
 )
+from planner.app.capture_task import CaptureTaskUseCase
 from planner.app.explain_plan import ExplainPlanUseCase
 from planner.app.ports import PersonRecord, RepoPort
 from planner.bot.states import PlanEditState
 from planner.domain.intent import (
     AddProjectIntent,
     AssignIntent,
+    CaptureTaskIntent,
     ClarifyIntent,
     ConfirmIntent,
     Intent,
@@ -99,11 +101,32 @@ async def build_add_project_reply(
     return text, result.plan_version_id
 
 
+async def build_capture_reply(
+    intent: CaptureTaskIntent,
+    *,
+    repo: RepoPort,
+    actor_record: PersonRecord | None,
+) -> str:
+    """Capture the task into the DB and return a confirmation line."""
+    result = await CaptureTaskUseCase(repo).execute(intent, actor_record)
+    lines = [
+        "✓ Записал",
+        f"  задача: {result.task_title}",
+        f"  проект: {result.project_title}",
+        f"  кому: {result.assignee_name or '—'}",
+        f"  дедлайн: {result.deadline_iso or '—'}",
+    ]
+    return "\n".join(lines)
+
+
 def describe_intent(intent: Intent) -> str:
     """Render a parsed intent as a short Russian confirmation line."""
     if isinstance(intent, AddProjectIntent):
         when = intent.deadline.isoformat() if intent.deadline else "обратный режим (КП)"
         return f"Проект «{intent.title}», шаблон {intent.template_code}, дедлайн: {when}."
+    if isinstance(intent, CaptureTaskIntent):
+        who = intent.assignee_name or "не назначено"
+        return f"Задача: {intent.task_title} (кому: {who})."
     if isinstance(intent, LoadIntent):
         who = intent.person_name or "вся команда"
         return f"Загрузка: {who}."
@@ -134,6 +157,15 @@ async def _handle_text(
 
     if isinstance(intent, ClarifyIntent):
         await message.answer(describe_intent(intent))
+        return
+
+    if isinstance(intent, CaptureTaskIntent):
+        if repo is None:
+            await message.answer(describe_intent(intent))
+            return
+        await message.answer(
+            await build_capture_reply(intent, repo=repo, actor_record=actor_record)
+        )
         return
 
     if not can_execute(intent.kind, actor.get("is_admin", False)):

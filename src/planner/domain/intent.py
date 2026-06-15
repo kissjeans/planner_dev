@@ -58,6 +58,21 @@ class AssignIntent(BaseModel):
     person_name: str
 
 
+class CaptureTaskIntent(BaseModel):
+    """Capture a task straight from a chat message into the DB (no interrogation).
+
+    The primary low-friction path: a task-like message becomes a stored task
+    immediately, with best-effort assignee / project / deadline. Missing fields
+    stay null — the bot never loops asking for them.
+    """
+
+    kind: Literal["capture_task"] = "capture_task"
+    task_title: str
+    assignee_name: str | None = None
+    project_name: str | None = None
+    deadline: date | None = None
+
+
 class ClarifyIntent(BaseModel):
     """Emitted when confidence is low — the bot asks a follow-up (flow step 8)."""
 
@@ -72,6 +87,7 @@ Intent = Annotated[
     | VacationIntent
     | ConfirmIntent
     | AssignIntent
+    | CaptureTaskIntent
     | ClarifyIntent,
     Field(discriminator="kind"),
 ]

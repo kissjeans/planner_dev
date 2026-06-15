@@ -13,7 +13,7 @@ from planner.app.errors import user_message
 from planner.app.ports import RepoPort
 from planner.app.set_vacation import PersonNotFoundError
 from planner.settings import Settings
-from planner.web.routes import audit, auth, plan, team
+from planner.web.routes import audit, auth, board, plan, team
 
 _TEMPLATES = Path(__file__).parent / "templates"
 
@@ -24,10 +24,12 @@ def create_app(repo: RepoPort, settings: Settings) -> FastAPI:
     app.state.jwt_secret = settings.jwt_secret
     app.state.bot_token = settings.bot_token
     app.state.admin_ids = settings.admin_id_set
+    app.state.debug = settings.debug
     app.state.templates = Jinja2Templates(directory=str(_TEMPLATES))
 
     app.include_router(auth.router)
     app.include_router(plan.router)
+    app.include_router(board.router)
     app.include_router(team.router)
     app.include_router(audit.router)
 

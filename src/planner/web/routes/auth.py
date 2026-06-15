@@ -15,12 +15,33 @@ from planner.web.auth import (
 router = APIRouter()
 
 
+def _set_session_cookie(resp: RedirectResponse, token: str) -> None:
+    resp.set_cookie(
+        COOKIE_NAME, token, httponly=True, samesite="lax", max_age=JWT_TTL_HOURS * 3600
+    )
+
+
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request) -> HTMLResponse:
     response: HTMLResponse = request.app.state.templates.TemplateResponse(
         request, "login.html", {}
     )
     return response
+
+
+@router.get("/dev-login")
+async def dev_login(request: Request) -> RedirectResponse:
+    """Local-only admin login bypass (Telegram widget needs a public domain).
+
+    Enabled only when ``DEBUG=true``; returns 404 in production.
+    """
+    if not request.app.state.debug:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+    claims = {"sub": "dev", "name": "Dev Admin", "tg_id": 0, "is_admin": True}
+    token = create_jwt(claims, request.app.state.jwt_secret)
+    resp = RedirectResponse("/plan", status_code=status.HTTP_303_SEE_OTHER)
+    _set_session_cookie(resp, token)
+    return resp
 
 
 @router.get("/login/telegram")
@@ -45,9 +66,7 @@ async def login_callback(request: Request) -> RedirectResponse:
     token = create_jwt(claims, request.app.state.jwt_secret)
 
     resp = RedirectResponse("/plan", status_code=status.HTTP_303_SEE_OTHER)
-    resp.set_cookie(
-        COOKIE_NAME, token, httponly=True, samesite="lax", max_age=JWT_TTL_HOURS * 3600
-    )
+    _set_session_cookie(resp, token)
     return resp
 
 

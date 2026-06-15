@@ -54,20 +54,17 @@ def test_build_user_message_empty_context():
 # ---------------------------------------------------------------------------
 
 def test_constructor_builds_client():
-    """ClaudeIntentParser.__init__ wires up instructor + anthropic clients."""
-    with patch("instructor.from_anthropic") as mock_instr, \
-         patch("anthropic.AsyncAnthropic") as mock_anth:
-        mock_instr.return_value = MagicMock()
+    """ClaudeIntentParser.__init__ wires up the anthropic client."""
+    with patch("anthropic.AsyncAnthropic") as mock_anth:
         mock_anth.return_value = MagicMock()
         from planner.infra.llm.claude import ClaudeIntentParser
         parser = ClaudeIntentParser(api_key="sk-test-key")
     assert mock_anth.called
-    assert mock_instr.called
     assert isinstance(parser._fallback, BasicIntentParser)
 
 
 def test_constructor_accepts_custom_fallback():
-    with patch("instructor.from_anthropic"), patch("anthropic.AsyncAnthropic"):
+    with patch("anthropic.AsyncAnthropic"):
         from planner.infra.llm.claude import ClaudeIntentParser
         custom = BasicIntentParser()
         parser = ClaudeIntentParser(api_key="sk-x", fallback=custom)
@@ -79,29 +76,48 @@ def test_constructor_accepts_custom_fallback():
 # ---------------------------------------------------------------------------
 
 def _make_parser():
-    """Construct ClaudeIntentParser with fully mocked instructor + anthropic."""
-    with patch("instructor.from_anthropic") as mock_instructor, \
-         patch("anthropic.AsyncAnthropic") as mock_anthropic:
-        mock_instructor.return_value = MagicMock()
+    """Construct ClaudeIntentParser with a fully mocked anthropic client."""
+    with patch("anthropic.AsyncAnthropic") as mock_anthropic:
         mock_anthropic.return_value = MagicMock()
         from planner.infra.llm.claude import ClaudeIntentParser
         parser = ClaudeIntentParser.__new__(ClaudeIntentParser)
         parser._client = MagicMock()
-        parser._raw = MagicMock()
         parser._fallback = BasicIntentParser()
     return parser
 
 
+def _json_resp(text: str) -> MagicMock:
+    """Build a messages.create response carrying one text block."""
+    block = MagicMock()
+    block.type = "text"
+    block.text = text
+    resp = MagicMock()
+    resp.content = [block]
+    return resp
+
+
 @pytest.mark.asyncio
 async def test_parse_returns_intent_from_api():
-    from planner.domain.intent import LoadIntent
-
     parser = _make_parser()
-    parser._client.messages.create = AsyncMock(return_value=LoadIntent())
+    parser._client.messages.create = AsyncMock(
+        return_value=_json_resp('{"kind": "load", "person_name": null}')
+    )
 
     ctx = ChatContext(today=date(2026, 6, 5))
     result = await parser.parse("загрузка команды", ctx)
     assert result.kind == "load"
+
+
+@pytest.mark.asyncio
+async def test_parse_strips_code_fences():
+    parser = _make_parser()
+    parser._client.messages.create = AsyncMock(
+        return_value=_json_resp('```json\n{"kind": "confirm"}\n```')
+    )
+
+    ctx = ChatContext(today=date(2026, 6, 5))
+    result = await parser.parse("ок", ctx)
+    assert result.kind == "confirm"
 
 
 @pytest.mark.asyncio
@@ -117,14 +133,20 @@ async def test_parse_falls_back_on_api_error():
 
 
 @pytest.mark.asyncio
+async def test_parse_falls_back_on_invalid_json():
+    """Malformed JSON from the model degrades to the regex parser."""
+    parser = _make_parser()
+    parser._client.messages.create = AsyncMock(return_value=_json_resp("not json"))
+
+    ctx = ChatContext(today=date(2026, 6, 5))
+    result = await parser.parse("загрузка команды", ctx)
+    assert result.kind == "load"
+
+
+@pytest.mark.asyncio
 async def test_explain_plan_returns_text():
     parser = _make_parser()
-    block = MagicMock()
-    block.type = "text"
-    block.text = "Всё хорошо."
-    resp = MagicMock()
-    resp.content = [block]
-    parser._raw.messages.create = AsyncMock(return_value=resp)
+    parser._client.messages.create = AsyncMock(return_value=_json_resp("Всё хорошо."))
 
     result = await parser.explain_plan("план: 3 задачи")
     assert "Всё хорошо." in result
@@ -141,7 +163,7 @@ async def test_explain_plan_skips_non_text_blocks():
     text_block.text = "OK"
     resp = MagicMock()
     resp.content = [tool_block, text_block]
-    parser._raw.messages.create = AsyncMock(return_value=resp)
+    parser._client.messages.create = AsyncMock(return_value=resp)
 
     result = await parser.explain_plan("summary")
     assert result == "OK"

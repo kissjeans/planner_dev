@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Календарь{% endblock %}
+{% block body %}
+<h1>Календарь</h1>
+<p class="ok">По датам видно, какие задачи у каждого сотрудника. Пусто — день свободен.</p>
+{% if board.calendar %}
+<table class="grid">
+  <thead><tr>
+    <th>Сотрудник</th>
+    {% for d in board.days %}
+      <th>{{ d.strftime("%d.%m") }}<br><span class="ok">{{ ["пн","вт","ср","чт","пт","сб","вс"][d.weekday()] }}</span></th>
+    {% endfor %}
+  </tr></thead>
+  <tbody>
+  {% for row in board.calendar %}
+    <tr>
+      <td>{{ row.person_name }}</td>
+      {% for c in row.cells %}
+        <td title="{{ c }}">{{ c }}</td>
+      {% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>Нет сотрудников.</p>
+{% endif %}
+{% endblock %}

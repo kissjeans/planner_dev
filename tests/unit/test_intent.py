@@ -5,6 +5,7 @@ from pydantic import TypeAdapter
 from planner.domain.intent import (
     WRITE_KINDS,
     AddProjectIntent,
+    CaptureTaskIntent,
     ClarifyIntent,
     Intent,
     LoadIntent,
@@ -49,7 +50,17 @@ def test_discriminates_clarify():
     assert isinstance(_ta.validate_python({"kind": "clarify"}), ClarifyIntent)
 
 
+def test_discriminates_capture_task():
+    i = _ta.validate_python(
+        {"kind": "capture_task", "task_title": "подготовить бриф",
+         "assignee_name": "Андрей", "project_name": "МТС"}
+    )
+    assert isinstance(i, CaptureTaskIntent)
+    assert i.deadline is None
+
+
 def test_write_kinds_excludes_read_intents():
     assert "add_project" in WRITE_KINDS
     assert "load" not in WRITE_KINDS
     assert "clarify" not in WRITE_KINDS
+    assert "capture_task" not in WRITE_KINDS  # capture open to everyone

@@ -11,16 +11,32 @@
     header { display:flex; gap:1.5rem; align-items:center; padding:.9rem 1.4rem;
              background:#fff; border-bottom:1px solid var(--line); }
     header a { color:var(--accent); text-decoration:none; font-weight:600; }
-    main { max-width:960px; margin:2rem auto; padding:0 1.2rem; }
+    main { max-width:1200px; margin:2rem auto; padding:0 1.2rem; }
     table { width:100%; border-collapse:collapse; background:#fff; }
     th,td { padding:.6rem .8rem; border-bottom:1px solid var(--line); text-align:left; }
     th { color:var(--muted); font-size:.8rem; text-transform:uppercase; letter-spacing:.04em; }
     h1 { font-size:1.6rem; }
+    .grid td,.grid th { text-align:center; padding:.35rem .4rem; font-size:.85rem; min-width:2.2rem; }
+    .grid td:first-child,.grid th:first-child { text-align:left; min-width:11rem; }
+    .over { background:#e8554d; color:#fff; font-weight:700; }
+    .ok { color:var(--muted); }
+    .chip { display:inline-block; padding:.15rem .5rem; border-radius:1rem;
+            background:#eef2f7; font-size:.8rem; }
+    .pri-high { color:#c0392b; font-weight:700; }
+    .pri-medium { color:#b9770e; }
+    .pri-low { color:var(--muted); }
+    .person-bar { display:flex; gap:.4rem; flex-wrap:wrap; margin:.6rem 0 1rem; }
+    .drop { border:1px dashed var(--line); border-radius:.4rem; padding:.3rem .6rem; cursor:pointer; }
+    .drop.hot { border-color:var(--accent); background:#eef4fb; }
+    .task[draggable=true] { cursor:grab; }
   </style>
 </head>
 <body>
   <header>
-    <a href="/plan">Планы</a>
+    <a href="/plan">Проекты</a>
+    <a href="/schedule">Расписание</a>
+    <a href="/calendar">Календарь</a>
+    <a href="/load-board">Загрузка</a>
     <a href="/team">Команда</a>
     <a href="/audit">Аудит</a>
     {% if user %}<span style="margin-left:auto;color:var(--muted)">{{ user.name }}</span>

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Загрузка{% endblock %}
+{% block body %}
+<h1>Загрузка</h1>
+<p class="ok">Слоты на человека в день. Красным — перегруз (слотов больше capacity).
+1 слот = полдня, полный день = 2 слота.</p>
+{% if board.load_rows %}
+<table class="grid">
+  <thead>
+    <tr>
+      <th>Человек</th>
+      {% for d in board.days %}<th>{{ d.strftime("%d.%m") }}</th>{% endfor %}
+      <th>% загрузки</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for row in board.load_rows %}
+    <tr>
+      <td>{{ row.name }} <span class="ok">(cap {{ row.capacity_slots }})</span></td>
+      {% for j in range(board.days|length) %}
+        <td class="{{ 'over' if row.overloaded[j] else '' }}"
+            title="свободно слотов: {{ row.free[j] }}">{{ row.slots[j] }}</td>
+      {% endfor %}
+      <td>{{ row.pct }}%</td>
+    </tr>
+  {% endfor %}
+    <tr>
+      <th>Итого слотов</th>
+      {% for t in board.totals %}<th>{{ t }}</th>{% endfor %}
+      <th></th>
+    </tr>
+  </tbody>
+</table>
+{% else %}
+<p>Нет данных по загрузке. Зафиксируй план в боте.</p>
+{% endif %}
+{% endblock %}

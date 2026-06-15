@@ -11,7 +11,7 @@ from datetime import date
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from planner.app.add_project import ProjectTemplate, TemplateTaskSpec
@@ -21,10 +21,12 @@ from planner.app.ports import (
     PersonRecord,
     PlanVersionRecord,
     ProjectRecord,
+    TaskMeta,
     TaskRecord,
 )
 from planner.domain.models import Person as DomainPerson
 from planner.infra.db.models import (
+    Assignment,
     AuditLog,
     Person,
     PersonRole,
@@ -39,9 +41,14 @@ from planner.infra.db.models import (
     TemplateTaskAssignee,
 )
 
+_CAPTURE_DEFAULT_HOURS = 8
+
 
 def _person_record(p: Person) -> PersonRecord:
-    return PersonRecord(id=p.id, name=p.name, is_admin=bool(p.is_admin))
+    return PersonRecord(
+        id=p.id, name=p.name, is_admin=bool(p.is_admin), capacity_h=p.capacity_h,
+        role_label=p.role_label,
+    )
 
 
 class SqlAlchemyRepo:
@@ -95,6 +102,7 @@ class SqlAlchemyRepo:
         deadline: date | None,
         brief_return_date: date | None,
         actor_id: UUID | None,
+        priority: str = "medium",
     ) -> ProjectRecord:
         project_id = uuid4()
         async with self._sf() as s, s.begin():
@@ -108,11 +116,15 @@ class SqlAlchemyRepo:
                     template_id=template_id,
                     deadline=deadline,
                     brief_return_date=brief_return_date,
+                    priority=priority,
                     status="planning",
                     created_by=actor_id,
                 )
             )
-        return ProjectRecord(project_id, title, "planning", deadline)
+        return ProjectRecord(
+            project_id, title, "planning", deadline,
+            priority=priority, template_code=template_code or None,
+        )
 
     async def get_committed_plan(self, project_id: UUID) -> PlanVersionRecord | None:
         async with self._sf() as s:
@@ -125,6 +137,54 @@ class SqlAlchemyRepo:
             if pv is None:
                 return None
             return PlanVersionRecord(pv.id, pv.project_id, pv.status, pv.payload)
+
+    async def get_project_by_title(self, title: str) -> ProjectRecord | None:
+        async with self._sf() as s:
+            p = await s.scalar(
+                select(Project).where(func.lower(Project.title) == title.lower())
+            )
+            if p is None:
+                return None
+            return ProjectRecord(p.id, p.title, p.status, p.deadline)
+
+    async def create_task(
+        self,
+        *,
+        project_id: UUID,
+        name: str,
+        duration_hours: int,
+        deadline: date | None,
+        actor_id: UUID | None,
+    ) -> TaskRecord:
+        task_id = uuid4()
+        async with self._sf() as s, s.begin():
+            s.add(
+                Task(
+                    id=task_id,
+                    project_id=project_id,
+                    name=name,
+                    duration_hours=duration_hours,
+                    end_date=deadline,
+                    status="not_done",
+                )
+            )
+        return TaskRecord(
+            id=task_id,
+            name=name,
+            status="not_done",
+            end_date=deadline,
+            duration_hours=duration_hours,
+        )
+
+    async def assign_task(self, task_id: UUID, person_id: UUID, hours: int) -> None:
+        async with self._sf() as s, s.begin():
+            existing = await s.get(
+                Assignment, {"task_id": task_id, "person_id": person_id}
+            )
+            if existing is None:
+                s.add(Assignment(task_id=task_id, person_id=person_id, hours=hours))
+            else:
+                existing.hours = hours
 
     async def upsert_day_override(
         self, person_id: UUID, day: date, capacity_h: int, reason: str | None
@@ -185,10 +245,105 @@ class SqlAlchemyRepo:
 
     async def list_projects(self) -> list[ProjectRecord]:
         async with self._sf() as s:
-            rows = await s.scalars(select(Project).order_by(Project.created_at.desc()))
+            rows = await s.execute(
+                select(Project, Template.code)
+                .outerjoin(Template, Template.id == Project.template_id)
+                .order_by(Project.created_at.desc())
+            )
             return [
-                ProjectRecord(p.id, p.title, p.status, p.deadline) for p in rows
+                ProjectRecord(
+                    p.id, p.title, p.status, p.deadline,
+                    priority=p.priority,
+                    template_code=code,
+                    start_date=p.created_at.date() if p.created_at else None,
+                )
+                for p, code in rows
             ]
+
+    async def list_committed_plans_with_project(
+        self,
+    ) -> list[tuple[UUID, dict[str, Any]]]:
+        async with self._sf() as s:
+            rows = await s.scalars(
+                select(PlanVersion).where(PlanVersion.status == "committed")
+            )
+            return [(pv.project_id, pv.payload) for pv in rows]
+
+    async def get_task_name_map(self) -> dict[UUID, str]:
+        async with self._sf() as s:
+            rows = await s.execute(select(Task.id, Task.name))
+            return {tid: name for tid, name in rows}
+
+    async def list_tasks_with_meta(self) -> list[TaskMeta]:
+        async with self._sf() as s:
+            rows = await s.execute(
+                select(
+                    Task, Project.title, Project.priority, Project.deadline,
+                    Person.id, Person.name,
+                )
+                .join(Project, Project.id == Task.project_id)
+                .outerjoin(Assignment, Assignment.task_id == Task.id)
+                .outerjoin(Person, Person.id == Assignment.person_id)
+                .order_by(Project.title, Task.name)
+            )
+            out: list[TaskMeta] = []
+            for t, title, priority, proj_dl, pid, pname in rows:
+                out.append(
+                    TaskMeta(
+                        task_id=t.id,
+                        task_name=t.name,
+                        project_title=title,
+                        priority=priority,
+                        status=t.status,
+                        start_date=t.start_date,
+                        end_date=t.end_date,
+                        duration_hours=t.duration_hours,
+                        assignee_id=pid,
+                        assignee_name=pname,
+                        deadline=proj_dl or t.end_date,
+                    )
+                )
+            return out
+
+    async def set_task_assignee(
+        self, task_id: UUID, person_id: UUID, hours: int = 8
+    ) -> bool:
+        async with self._sf() as s, s.begin():
+            task = await s.get(Task, task_id)
+            if task is None:
+                return False
+            existing = await s.scalars(
+                select(Assignment).where(Assignment.task_id == task_id)
+            )
+            for a in existing:
+                await s.delete(a)
+            s.add(Assignment(task_id=task_id, person_id=person_id, hours=hours))
+            return True
+
+    async def reassign_in_plan(self, task_id: UUID, new_person_id: UUID) -> bool:
+        task_key = str(task_id)
+        person_key = str(new_person_id)
+        async with self._sf() as s, s.begin():
+            plans = await s.scalars(
+                select(PlanVersion).where(PlanVersion.status == "committed")
+            )
+            for pv in plans:
+                payload = dict(pv.payload)
+                assignments = [dict(a) for a in payload.get("assignments", [])]
+                moved = False
+                for a in assignments:
+                    if a.get("task_id") == task_key:
+                        a["person_id"] = person_key
+                        a["allocations"] = [
+                            {**dict(al), "person_id": person_key}
+                            for al in a.get("allocations", [])
+                        ]
+                        moved = True
+                if moved:
+                    payload["assignments"] = assignments
+                    pv.payload = payload
+                    return True
+            return False
 
     async def list_project_tasks(self, project_id: UUID) -> list[TaskRecord]:
         async with self._sf() as s:
@@ -320,6 +475,7 @@ class SqlAlchemyRepo:
                     action=a.action,
                     entity_type=a.entity_type,
                     payload=a.payload,
+                    entity_id=a.entity_id,
                 )
                 for a in rows
             ]

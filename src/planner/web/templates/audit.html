@@ -3,14 +3,17 @@
 {% block body %}
 <h1>Журнал изменений</h1>
 <table>
-  <thead><tr><th>Когда</th><th>Кто</th><th>Действие</th><th>Объект</th></tr></thead>
+  <thead><tr>
+    <th>Дата и время</th><th>Действие</th><th>Проект</th><th>Задача</th><th>ID задачи</th>
+  </tr></thead>
   <tbody>
   {% for e in entries %}
     <tr>
-      <td>{{ e.created_at }}</td>
-      <td>{{ e.actor_name or "—" }}</td>
+      <td>{{ e.created_at[:19] }}</td>
       <td>{{ e.action }}</td>
-      <td>{{ e.entity_type }}</td>
+      <td>{{ (e.payload.project if e.payload) or "—" }}</td>
+      <td>{{ (e.payload.title if e.payload) or "—" }}</td>
+      <td><code style="font-size:.8rem">{{ e.entity_id or "—" }}</code></td>
     </tr>
   {% endfor %}
   </tbody>

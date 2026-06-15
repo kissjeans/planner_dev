@@ -17,6 +17,7 @@ from planner.domain.calendar.rules import WeekendCalendar
 from planner.domain.intent import (
     AddProjectIntent,
     AssignIntent,
+    CaptureTaskIntent,
     ClarifyIntent,
     ConfirmIntent,
     LoadIntent,
@@ -68,6 +69,8 @@ class _FakeRepo:
     def __init__(self, people=(), plans=()) -> None:
         self._people = people
         self._plans = list(plans)
+        self.captured_tasks: list[str] = []
+        self.assignments: list[tuple] = []
 
     async def get_solver_people(self) -> tuple:
         return self._people
@@ -77,6 +80,30 @@ class _FakeRepo:
 
     async def get_project_template(self, code: str) -> None:
         return None
+
+    # --- capture flow ---
+    async def get_project_by_title(self, title):
+        return None  # always create
+
+    async def create_project(self, *, title, template_code, deadline,
+                             brief_return_date, actor_id):
+        from planner.app.ports import ProjectRecord
+        return ProjectRecord(uuid4(), title, "planning", deadline)
+
+    async def create_task(self, *, project_id, name, duration_hours, deadline, actor_id):
+        from planner.app.ports import TaskRecord
+        self.captured_tasks.append(name)
+        return TaskRecord(id=uuid4(), name=name, status="not_done",
+                          end_date=deadline, duration_hours=duration_hours)
+
+    async def get_person_by_name(self, name):
+        return None  # unknown → no assignment
+
+    async def assign_task(self, task_id, person_id, hours):
+        self.assignments.append((task_id, person_id, hours))
+
+    async def add_audit(self, *a):
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +147,44 @@ def test_describe_intent_assign():
 def test_describe_intent_clarify_returns_question():
     out = describe_intent(ClarifyIntent(question="Уточни дату."))
     assert "Уточни дату." in out
+
+
+def test_describe_intent_capture_task():
+    out = describe_intent(
+        CaptureTaskIntent(task_title="сделать бриф", assignee_name="Андрей")
+    )
+    assert "сделать бриф" in out
+    assert "Андрей" in out
+
+
+# ---------------------------------------------------------------------------
+# _handle_text — CaptureTaskIntent path
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_handle_text_capture_writes_to_db():
+    msg, answers = _message()
+    repo = _FakeRepo()
+    intent = CaptureTaskIntent(
+        task_title="подготовить бриф", project_name="МТС", assignee_name="Призрак"
+    )
+    await _handle_text(
+        msg, "подготовить бриф по мтс", _FakeParser(intent),  # type: ignore[arg-type]
+        {"is_admin": False}, repo=repo,  # type: ignore[arg-type]
+    )
+    assert "Записал" in answers.calls[0]
+    assert repo.captured_tasks == ["подготовить бриф"]
+    assert repo.assignments == []  # unknown assignee → not assigned
+
+
+@pytest.mark.asyncio
+async def test_handle_text_capture_no_repo_echoes():
+    msg, answers = _message()
+    intent = CaptureTaskIntent(task_title="что-то")
+    await _handle_text(
+        msg, "что-то", _FakeParser(intent), {"is_admin": False}, repo=None  # type: ignore[arg-type]
+    )
+    assert answers.calls  # echoes describe_intent
 
 
 # ---------------------------------------------------------------------------

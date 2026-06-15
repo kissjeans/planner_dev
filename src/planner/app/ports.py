@@ -18,6 +18,8 @@ class PersonRecord:
     id: UUID
     name: str
     is_admin: bool = False
+    capacity_h: int = 8
+    role_label: str | None = None
 
 
 @dataclass(frozen=True)
@@ -34,6 +36,9 @@ class ProjectRecord:
     title: str
     status: str
     deadline: date | None = None
+    priority: str = "medium"
+    template_code: str | None = None
+    start_date: date | None = None
 
 
 @dataclass(frozen=True)
@@ -63,6 +68,24 @@ class AuditRecord:
     entity_type: str
     actor_name: str | None = None
     payload: dict[str, Any] | None = None
+    entity_id: UUID | None = None
+
+
+@dataclass(frozen=True)
+class TaskMeta:
+    """A persisted task with its project + assignee, for the admin board."""
+
+    task_id: UUID
+    task_name: str
+    project_title: str
+    priority: str
+    status: str
+    start_date: date | None
+    end_date: date | None
+    duration_hours: int
+    assignee_id: UUID | None
+    assignee_name: str | None
+    deadline: date | None
 
 
 class RepoPort(Protocol):
@@ -78,6 +101,26 @@ class RepoPort(Protocol):
 
     async def get_committed_plan(self, project_id: UUID) -> PlanVersionRecord | None: ...
 
+    async def get_project_by_title(self, title: str) -> ProjectRecord | None:
+        """Case-insensitive lookup of a project by title (for task capture)."""
+        ...
+
+    async def create_task(
+        self,
+        *,
+        project_id: UUID,
+        name: str,
+        duration_hours: int,
+        deadline: date | None,
+        actor_id: UUID | None,
+    ) -> TaskRecord:
+        """Insert a standalone task (chat capture) and return it."""
+        ...
+
+    async def assign_task(self, task_id: UUID, person_id: UUID, hours: int) -> None:
+        """Attach a person to a task (capture flow)."""
+        ...
+
     async def list_committed_plans(self) -> list[dict[str, Any]]:
         """Payloads of all committed plan versions (for the load heatmap)."""
         ...
@@ -90,7 +133,32 @@ class RepoPort(Protocol):
         deadline: date | None,
         brief_return_date: date | None,
         actor_id: UUID | None,
+        priority: str = "medium",
     ) -> ProjectRecord: ...
+
+    async def list_committed_plans_with_project(
+        self,
+    ) -> list[tuple[UUID, dict[str, Any]]]:
+        """(project_id, payload) for every committed plan — admin board source."""
+        ...
+
+    async def get_task_name_map(self) -> dict[UUID, str]:
+        """All task ids → names, for labelling the schedule/calendar views."""
+        ...
+
+    async def list_tasks_with_meta(self) -> list[TaskMeta]:
+        """Persisted tasks joined with project + assignee — admin board source."""
+        ...
+
+    async def set_task_assignee(
+        self, task_id: UUID, person_id: UUID, hours: int = 8
+    ) -> bool:
+        """Replace a task's assignee. True if the task exists."""
+        ...
+
+    async def reassign_in_plan(self, task_id: UUID, new_person_id: UUID) -> bool:
+        """Move a task to another person inside its committed plan. True if moved."""
+        ...
 
     async def upsert_day_override(
         self, person_id: UUID, day: date, capacity_h: int, reason: str | None

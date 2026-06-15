@@ -72,8 +72,16 @@ def test_iso_date():
     assert i.deadline == date(2026, 7, 15)
 
 
-def test_unrecognized_is_clarify():
-    i = P.parse_sync("абракадабра ничего непонятно", CTX)
+def test_unrecognized_is_captured_as_task():
+    """Non-command text is captured as a task (low-friction path), not clarify."""
+    i = P.parse_sync("подготовить бриф по мтс, Андрей задача твоя", CTX)
+    assert i.kind == "capture_task"
+    assert i.task_title == "подготовить бриф по мтс, Андрей задача твоя"
+    assert i.assignee_name == "Андрей"  # resolved from known_people
+
+
+def test_empty_text_is_clarify():
+    i = P.parse_sync("   ", CTX)
     assert i.kind == "clarify"
 
 

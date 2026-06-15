@@ -2,11 +2,21 @@
 {% block title %}Команда{% endblock %}
 {% block body %}
 <h1>Команда</h1>
+<p class="ok">Загрузка и свободные слоты — на 14 дней вперёд. 1 слот = полдня.</p>
 <table>
-  <thead><tr><th>Имя</th></tr></thead>
+  <thead><tr>
+    <th>Имя</th><th>Роль</th><th>Capacity</th><th>% загрузки</th><th>Свободно слотов</th>
+  </tr></thead>
   <tbody>
   {% for person in people %}
-    <tr><td>{{ person.name }}</td></tr>
+    {% set lr = load.get(person.name) %}
+    <tr>
+      <td>{{ person.name }}{% if person.is_admin %} <span class="chip">админ</span>{% endif %}</td>
+      <td>{{ person.role_label or "—" }}</td>
+      <td>{{ lr.capacity_slots if lr else "—" }} слот/день</td>
+      <td class="{{ 'over' if lr and lr.pct > 100 else '' }}">{{ lr.pct if lr else 0 }}%</td>
+      <td>{{ (lr.free|sum) if lr else "—" }}</td>
+    </tr>
   {% endfor %}
   </tbody>
 </table>

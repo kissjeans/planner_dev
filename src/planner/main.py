@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 
+import structlog
 import uvicorn
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -18,13 +19,26 @@ from planner.domain.solver.greedy import GreedySolver
 from planner.infra.calendar.snapshot import SnapshotCalendar
 from planner.infra.db.base import create_engine, create_session_factory
 from planner.infra.db.repo import SqlAlchemyRepo
+from planner.infra.logging import configure_logging
 from planner.infra.scheduler import SchedulerDeps, register_jobs
 from planner.settings import get_settings
 from planner.web.app import create_app
 
+log = structlog.get_logger("planner.main")
+
 
 async def main() -> None:
     settings = get_settings()
+
+    configure_logging(json_logs=not settings.debug, level="DEBUG" if settings.debug else "INFO")
+    parser_kind = "claude" if settings.anthropic_api_key else "basic-regex"
+    log.info(
+        "startup",
+        parser=parser_kind,
+        stt="whisper" if settings.openai_api_key else "off",
+        admin_ids=sorted(settings.admin_id_set),
+        timezone=settings.timezone,
+    )
 
     engine = create_engine(settings.database_url)
     session_factory = create_session_factory(engine)
@@ -68,6 +82,7 @@ async def main() -> None:
     )
     scheduler.start()
 
+    log.info("running", web="http://0.0.0.0:8000", polling=True)
     await asyncio.gather(dp.start_polling(bot), server.serve())
 
 

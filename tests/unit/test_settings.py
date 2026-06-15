@@ -74,7 +74,7 @@ class TestSettingsValidation:
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
-        s = Settings()
+        s = Settings(_env_file=None)
         assert s.anthropic_api_key == ""
 
     def test_settings_missing_openai_api_key_defaults_to_empty(self, monkeypatch):
@@ -86,7 +86,7 @@ class TestSettingsValidation:
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
-        s = Settings()
+        s = Settings(_env_file=None)
         assert s.openai_api_key == ""
 
     def test_settings_with_optional_fields_defaults(self, monkeypatch):

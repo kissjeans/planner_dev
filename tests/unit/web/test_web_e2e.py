@@ -9,7 +9,13 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from planner.app.ports import AuditRecord, PersonRecord, ProjectRecord, TaskRecord
+from planner.app.ports import (
+    AuditRecord,
+    PersonRecord,
+    ProjectRecord,
+    TaskMeta,
+    TaskRecord,
+)
 from planner.settings import Settings
 from planner.web.app import create_app
 from planner.web.auth import COOKIE_NAME, create_jwt
@@ -26,10 +32,30 @@ class WebFakeRepo:
         self.overrides: list = []
         self.audits: list = []
         self.task_updates: list = []
-        self.people = {"Айгуль": PersonRecord(id=uuid4(), name="Айгуль")}
+        self.reassigns: list = []
+        self.people = {"Айгуль": PersonRecord(
+            id=uuid4(), name="Айгуль", role_label="Аналитик")}
 
     async def list_projects(self):
-        return [ProjectRecord(_PROJECT_ID, "Альфа", "planning", None)]
+        return [ProjectRecord(_PROJECT_ID, "Альфа", "planning", None,
+                              priority="high", template_code="standard",
+                              start_date=date(2026, 6, 1))]
+
+    async def list_tasks_with_meta(self):
+        person = self.people["Айгуль"]
+        return [TaskMeta(
+            task_id=_TASK_ID, task_name="Бриф", project_title="Альфа",
+            priority="high", status="not_done",
+            start_date=date.today(), end_date=date.today(), duration_hours=8,
+            assignee_id=person.id, assignee_name="Айгуль", deadline=date.today(),
+        )]
+
+    async def set_task_assignee(self, task_id, person_id, hours=8):
+        self.reassigns.append((task_id, person_id))
+        return True
+
+    async def get_task_name_map(self):
+        return {_TASK_ID: "Бриф"}
 
     async def list_people(self):
         return list(self.people.values())
@@ -69,6 +95,7 @@ def _settings() -> Settings:
         openai_api_key="x",
         jwt_secret=JWT_SECRET,
         admin_ids="42",
+        debug=False,
     )
 
 
@@ -157,6 +184,90 @@ def test_edit_task_redirects_and_records_update(client):
 def test_login_page_renders(client):
     r = client.get("/login")
     assert r.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Admin board: Schedule / Calendar / Load (client xlsx vision)
+# ---------------------------------------------------------------------------
+
+def test_schedule_page_lists_tasks(client):
+    _auth(client)
+    r = client.get("/schedule")
+    assert r.status_code == 200
+    assert "Расписание" in r.text
+    assert "Бриф" in r.text  # task from committed plan
+
+
+def test_calendar_page_shows_person_tasks_by_date(client):
+    _auth(client)
+    r = client.get("/calendar")
+    assert r.status_code == 200
+    assert "Айгуль" in r.text   # person row
+    assert "Бриф" in r.text     # task in a day cell
+
+
+def test_load_board_shows_slots(client):
+    _auth(client)
+    r = client.get("/load-board")
+    assert r.status_code == 200
+    assert "Итого слотов" in r.text
+
+
+def test_board_pages_require_auth(client):
+    assert client.get("/schedule").status_code == 401
+    assert client.get("/calendar").status_code == 401
+    assert client.get("/load-board").status_code == 401
+
+
+def test_reassign_admin_moves_task(client):
+    _auth(client, is_admin=True)
+    pid = client.repo.people["Айгуль"].id  # type: ignore[attr-defined]
+    r = client.post(
+        "/schedule/reassign",
+        data={"task_id": str(_TASK_ID), "person_id": str(pid)},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert len(client.repo.reassigns) == 1  # type: ignore[attr-defined]
+
+
+def test_reassign_empty_person_is_noop(client):
+    _auth(client, is_admin=True)
+    r = client.post(
+        "/schedule/reassign",
+        data={"task_id": str(_TASK_ID), "person_id": ""},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert client.repo.reassigns == []  # type: ignore[attr-defined]
+
+
+def test_reassign_blocked_for_member(client):
+    _auth(client, is_admin=False)
+    pid = client.repo.people["Айгуль"].id  # type: ignore[attr-defined]
+    r = client.post(
+        "/schedule/reassign",
+        data={"task_id": str(_TASK_ID), "person_id": str(pid)},
+        follow_redirects=False,
+    )
+    assert r.status_code == 403
+
+
+def test_dev_login_disabled_without_debug(client):
+    r = client.get("/dev-login", follow_redirects=False)
+    assert r.status_code == 404
+
+
+def test_dev_login_mints_admin_session_when_debug():
+    settings = _settings().model_copy(update={"debug": True})
+    app = create_app(WebFakeRepo(), settings)
+    c = TestClient(app)
+    r = c.get("/dev-login", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/plan"
+    assert c.cookies.get(COOKIE_NAME)
+    # the minted session reaches an admin-only page
+    assert c.get("/plan").status_code == 200
 
 
 def test_logout_clears_cookie(client):

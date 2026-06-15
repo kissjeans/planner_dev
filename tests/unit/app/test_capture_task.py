@@ -1,0 +1,113 @@
+"""Unit tests for CaptureTaskUseCase (chat → DB task capture)."""
+
+from __future__ import annotations
+
+from datetime import date
+from typing import Any
+from uuid import uuid4
+
+import pytest
+
+from planner.app.capture_task import INBOX_PROJECT, CaptureTaskUseCase
+from planner.app.ports import PersonRecord, ProjectRecord, TaskRecord
+from planner.domain.intent import CaptureTaskIntent
+
+
+class _FakeRepo:
+    def __init__(self, *, known_projects=None, known_people=None) -> None:
+        self._projects = {p.lower(): pr for p, pr in (known_projects or {}).items()}
+        self._people = known_people or {}
+        self.created_projects: list[str] = []
+        self.created_tasks: list[dict[str, Any]] = []
+        self.assignments: list[tuple] = []
+        self.audits: list[tuple] = []
+
+    async def get_project_by_title(self, title: str) -> ProjectRecord | None:
+        return self._projects.get(title.lower())
+
+    async def create_project(self, *, title, template_code, deadline,
+                             brief_return_date, actor_id) -> ProjectRecord:
+        self.created_projects.append(title)
+        rec = ProjectRecord(uuid4(), title, "planning", deadline)
+        self._projects[title.lower()] = rec
+        return rec
+
+    async def create_task(self, *, project_id, name, duration_hours,
+                          deadline, actor_id) -> TaskRecord:
+        self.created_tasks.append(
+            {"project_id": project_id, "name": name, "deadline": deadline}
+        )
+        return TaskRecord(id=uuid4(), name=name, status="not_done",
+                          end_date=deadline, duration_hours=duration_hours)
+
+    async def get_person_by_name(self, name: str) -> PersonRecord | None:
+        return self._people.get(name)
+
+    async def assign_task(self, task_id, person_id, hours) -> None:
+        self.assignments.append((task_id, person_id, hours))
+
+    async def add_audit(self, actor_id, action, entity_type, entity_id, payload) -> None:
+        self.audits.append((action, entity_type, payload))
+
+
+_ACTOR = PersonRecord(id=uuid4(), name="Егор", is_admin=False)
+
+
+@pytest.mark.asyncio
+async def test_capture_into_existing_project_with_assignee():
+    andrey = PersonRecord(id=uuid4(), name="Андрей")
+    mts = ProjectRecord(uuid4(), "МТС", "planning")
+    repo = _FakeRepo(known_projects={"МТС": mts}, known_people={"Андрей": andrey})
+    uc = CaptureTaskUseCase(repo)  # type: ignore[arg-type]
+
+    intent = CaptureTaskIntent(
+        task_title="подготовить бриф", assignee_name="Андрей",
+        project_name="МТС", deadline=date(2026, 6, 16),
+    )
+    result = await uc.execute(intent, _ACTOR)
+
+    assert result.project_title == "МТС"
+    assert result.assignee_name == "Андрей"
+    assert result.deadline_iso == "2026-06-16"
+    assert repo.created_projects == []  # reused existing
+    assert repo.created_tasks[0]["project_id"] == mts.id
+    assert repo.assignments and repo.assignments[0][1] == andrey.id
+    assert repo.audits[0][0] == "capture_task"
+
+
+@pytest.mark.asyncio
+async def test_capture_creates_named_project_when_unknown():
+    repo = _FakeRepo()
+    uc = CaptureTaskUseCase(repo)  # type: ignore[arg-type]
+
+    intent = CaptureTaskIntent(task_title="сделать КП", project_name="Билайн")
+    result = await uc.execute(intent, _ACTOR)
+
+    assert result.project_title == "Билайн"
+    assert repo.created_projects == ["Билайн"]
+    assert result.assignee_name is None
+
+
+@pytest.mark.asyncio
+async def test_capture_falls_back_to_inbox_without_project():
+    repo = _FakeRepo()
+    uc = CaptureTaskUseCase(repo)  # type: ignore[arg-type]
+
+    intent = CaptureTaskIntent(task_title="позвонить клиенту")
+    result = await uc.execute(intent, None)  # actor None path
+
+    assert result.project_title == INBOX_PROJECT
+    assert repo.created_projects == [INBOX_PROJECT]
+    assert repo.audits[0][2]["assignee"] is None
+
+
+@pytest.mark.asyncio
+async def test_capture_skips_assignment_when_person_unknown():
+    repo = _FakeRepo()
+    uc = CaptureTaskUseCase(repo)  # type: ignore[arg-type]
+
+    intent = CaptureTaskIntent(task_title="что-то", assignee_name="Призрак")
+    result = await uc.execute(intent, _ACTOR)
+
+    assert result.assignee_name is None
+    assert repo.assignments == []

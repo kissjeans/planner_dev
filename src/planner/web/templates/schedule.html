@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Расписание{% endblock %}
+{% block body %}
+<h1>Расписание</h1>
+<p class="ok">Все задачи по проектам, по возрастанию дедлайна. 1 слот = полдня.
+Смена исполнителя — выпадающим списком (только админ).</p>
+{% if board.schedule %}
+<table>
+  <thead><tr>
+    <th>Проект</th><th>Задача</th><th>Исполнитель</th>
+    <th>Дедлайн</th><th>Слотов</th><th>Статус</th>
+  </tr></thead>
+  <tbody>
+  {% for r in board.schedule %}
+    <tr>
+      <td>{{ r.project_title }}</td>
+      <td>{{ r.task_name }}</td>
+      <td>
+        {% if user.is_admin %}
+        <form method="post" action="/schedule/reassign" style="margin:0">
+          <input type="hidden" name="task_id" value="{{ r.task_id }}">
+          <select name="person_id" onchange="this.form.submit()">
+            <option value="" {% if not r.assignee_id %}selected{% endif %}>—</option>
+            {% for p in people %}
+              <option value="{{ p.id }}" {% if r.assignee_id == p.id|string %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+          </select>
+        </form>
+        {% else %}{{ r.assignee_name }}{% endif %}
+      </td>
+      <td>{{ r.deadline or "—" }}</td>
+      <td>{{ r.slots }}</td>
+      <td>{{ r.status }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>Нет задач. Создай задачу в боте (/task …) — она появится здесь.</p>
+{% endif %}
+{% endblock %}

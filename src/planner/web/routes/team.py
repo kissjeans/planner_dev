@@ -32,9 +32,14 @@ async def team_list(
     user: dict[str, Any] = Depends(current_user),
     repo: RepoPort = Depends(get_repo),
 ) -> HTMLResponse:
+    from planner.app.admin_board import AdminBoardUseCase
+
     people = await repo.list_people()
+    tasks = await repo.list_tasks_with_meta()
+    board = AdminBoardUseCase().build(tasks=tasks, people=people, start=date.today())
+    load = {r.name: r for r in board.load_rows}
     response: HTMLResponse = request.app.state.templates.TemplateResponse(
-        request, "team.html", {"people": people, "user": user}
+        request, "team.html", {"people": people, "user": user, "load": load}
     )
     return response
 

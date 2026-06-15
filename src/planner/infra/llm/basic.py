@@ -13,6 +13,7 @@ from typing import Literal
 
 from planner.domain.intent import (
     AddProjectIntent,
+    CaptureTaskIntent,
     ClarifyIntent,
     ConfirmIntent,
     Intent,
@@ -81,8 +82,11 @@ class BasicIntentParser:
         if any(kw in low for kw in _load_kw) or "/load" in text:
             return LoadIntent(person_name=_resolve_person(text, ctx))
 
-        # "какие задачи / статус / что сейчас" → show team load
-        _task_query_kw = ("задач", "что сейчас", "что идёт", "статус", "текущ")
+        # "какие задачи / статус / что сейчас" → show team load.
+        # Specific phrases only — bare "задача" is a captured task, not a query.
+        _task_query_kw = (
+            "какие задач", "что по задач", "что сейчас", "что идёт", "статус", "текущ"
+        )
         if any(kw in low for kw in _task_query_kw):
             return LoadIntent(person_name=_resolve_person(text, ctx))
 
@@ -107,14 +111,18 @@ class BasicIntentParser:
                     deadline=_parse_date(text, ctx.today),
                 )
 
+        # Default: capture the message as a task (low-friction path). Only
+        # truly empty input falls through to clarify.
+        if low:
+            return CaptureTaskIntent(
+                task_title=text.strip(),
+                assignee_name=_resolve_person(text, ctx),
+                deadline=_parse_date(text, ctx.today),
+            )
         return ClarifyIntent(
             question=(
-                "Не понял. Умею:\n"
-                "/load — загрузка команды\n"
-                "/task <текст> — новый проект\n"
-                "/whatif — что-если\n"
-                "/confirm — подтвердить план\n"
-                "или напиши «загрузка», «отпуск», «что-если»"
+                "Не понял. Напиши задачу текстом, например:\n"
+                "«подготовить бриф по МТС, Андрей задача твоя»"
             )
         )
 
