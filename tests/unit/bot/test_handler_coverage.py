@@ -173,14 +173,30 @@ async def test_handle_text_capture_writes_to_db():
     intent = CaptureTaskIntent(
         task_title="подготовить бриф", project_name="МТС", assignee_name="Призрак"
     )
+    actor_record = PersonRecord(id=uuid4(), name="Андрей", is_admin=True)
+    await _handle_text(
+        msg, "подготовить бриф по мтс", _FakeParser(intent),  # type: ignore[arg-type]
+        {"is_admin": True}, repo=repo, actor_record=actor_record,  # type: ignore[arg-type]
+    )
+    assert "Записал" in answers.calls[0]
+    assert repo.captured_tasks == ["подготовить бриф"]
+    assert repo.assignments == []
+
+
+@pytest.mark.asyncio
+async def test_handle_text_capture_non_admin_blocked():
+    """capture_task is a write -> a known non-admin must be rejected, no DB write."""
+    from planner.app.ports import PersonRecord
+    msg, answers = _message()
+    repo = _FakeRepo()
+    intent = CaptureTaskIntent(task_title="подготовить бриф", project_name="МТС")
     actor_record = PersonRecord(id=uuid4(), name="Андрей", is_admin=False)
     await _handle_text(
         msg, "подготовить бриф по мтс", _FakeParser(intent),  # type: ignore[arg-type]
         {"is_admin": False}, repo=repo, actor_record=actor_record,  # type: ignore[arg-type]
     )
-    assert "Записал" in answers.calls[0]
-    assert repo.captured_tasks == ["подготовить бриф"]
-    assert repo.assignments == []
+    assert "Только админ" in answers.calls[0]
+    assert repo.captured_tasks == []
 
 
 @pytest.mark.asyncio

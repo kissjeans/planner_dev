@@ -12,8 +12,13 @@ import math
 SLOT_HOURS = 4  # 1 slot = half a working day
 
 
-def hours_to_slots(hours: int) -> int:
-    """Round hours up to whole slots (a partial slot still occupies the slot)."""
+def hours_to_slots(hours: float) -> int:
+    """Round hours up to whole slots (a partial slot still occupies the slot).
+
+    Accepts fractional hours: callers aggregate real per-day load (which can be
+    fractional) and convert once here, so the ceil is not defeated by an early
+    integer round.
+    """
     if hours <= 0:
         return 0
     return math.ceil(hours / SLOT_HOURS)

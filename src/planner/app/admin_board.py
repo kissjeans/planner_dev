@@ -143,7 +143,7 @@ class AdminBoardUseCase:
         for p in people:
             cap = hours_to_slots(p.capacity_h)
             slots = [
-                hours_to_slots(round(person_day_h[(p.id, j)])) for j in range(days)
+                hours_to_slots(person_day_h[(p.id, j)]) for j in range(days)
             ]
             for j, s in enumerate(slots):
                 totals[j] += s

@@ -60,16 +60,23 @@ def suggest_assignees(
     unless ``include_external`` is set. Ties break by lower load, then name.
     """
     required = list(dict.fromkeys(s.strip() for s in required_skills if s.strip()))
-    required_keys = {_norm(s) for s in required}
+    # Dedupe numerator and denominator on the SAME (normalized) basis so coverage
+    # stays in [0, 1] even when the query carries case/whitespace-variant dupes.
+    label_by_key: dict[str, str] = {}
+    for s in required:
+        label_by_key.setdefault(_norm(s), s)
+    required_keys = list(label_by_key)
 
     suggestions: list[AssigneeSuggestion] = []
     for c in candidates:
         if c.is_external and not include_external:
             continue
         have = {_norm(s) for s in c.skills}
-        covered = tuple(s for s in required if _norm(s) in have)
-        missing = tuple(s for s in required if _norm(s) not in have)
-        coverage = len(covered) / len(required_keys) if required_keys else 1.0
+        covered_keys = [k for k in required_keys if k in have]
+        missing_keys = [k for k in required_keys if k not in have]
+        coverage = len(covered_keys) / len(required_keys) if required_keys else 1.0
+        covered = tuple(label_by_key[k] for k in covered_keys)
+        missing = tuple(label_by_key[k] for k in missing_keys)
         suggestions.append(
             AssigneeSuggestion(
                 person_id=c.person_id,

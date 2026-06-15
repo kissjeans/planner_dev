@@ -67,9 +67,9 @@ class CaptureTaskIntent(BaseModel):
     """
 
     kind: Literal["capture_task"] = "capture_task"
-    task_title: str
-    assignee_name: str | None = None
-    project_name: str | None = None
+    task_title: str = Field(min_length=1, max_length=200)
+    assignee_name: str | None = Field(default=None, max_length=200)
+    project_name: str | None = Field(default=None, max_length=200)
     deadline: date | None = None
 
 
@@ -93,6 +93,8 @@ Intent = Annotated[
 ]
 
 # Intents that mutate state — gated to admins by the permissions middleware.
+# capture_task writes (creates projects/tasks/assignments), so it is a write:
+# spec rule is "writes are admin-only, reads are open" (domain/permissions.py).
 WRITE_KINDS = frozenset(
-    {"add_project", "what_if", "vacation", "confirm", "assign"}
+    {"add_project", "what_if", "vacation", "confirm", "assign", "capture_task"}
 )

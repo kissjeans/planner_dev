@@ -63,4 +63,12 @@ def test_write_kinds_excludes_read_intents():
     assert "add_project" in WRITE_KINDS
     assert "load" not in WRITE_KINDS
     assert "clarify" not in WRITE_KINDS
-    assert "capture_task" not in WRITE_KINDS  # capture open to everyone
+    assert "capture_task" in WRITE_KINDS  # capture writes -> gated to admins
+
+
+def test_capture_task_rejects_blank_title():
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        CaptureTaskIntent(task_title="")

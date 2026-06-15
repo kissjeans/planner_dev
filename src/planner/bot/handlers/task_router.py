@@ -171,6 +171,10 @@ async def _handle_text(
         await message.answer(describe_intent(intent))
         return None
 
+    if not can_execute(intent.kind, actor.get("is_admin", False)):
+        await message.answer("Только админ может править план.")
+        return None
+
     if isinstance(intent, CaptureTaskIntent):
         if repo is None:
             await message.answer(describe_intent(intent))
@@ -178,10 +182,6 @@ async def _handle_text(
         await message.answer(
             await build_capture_reply(intent, repo=repo, actor_record=actor_record)
         )
-        return None
-
-    if not can_execute(intent.kind, actor.get("is_admin", False)):
-        await message.answer("Только админ может править план.")
         return None
 
     if (

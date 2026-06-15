@@ -20,19 +20,21 @@ def render_heatmap(
     ``capacity`` so red == over budget).
     """
     fig, ax = plt.subplots(figsize=(max(6, len(days) * 0.6), max(2, len(labels) * 0.5)))
-    img = ax.imshow(matrix, cmap="RdYlGn_r", vmin=0, vmax=capacity * 2, aspect="auto")
+    try:
+        img = ax.imshow(matrix, cmap="RdYlGn_r", vmin=0, vmax=capacity * 2, aspect="auto")
 
-    ax.set_xticks(range(len(days)))
-    ax.set_xticklabels([d.strftime("%d.%m") for d in days], rotation=45, ha="right")
-    ax.set_yticks(range(len(labels)))
-    ax.set_yticklabels(labels)
-    for i, row in enumerate(matrix):
-        for j, val in enumerate(row):
-            ax.text(j, i, str(val), ha="center", va="center", fontsize=8)
-    fig.colorbar(img, ax=ax, label="часы")
-    fig.tight_layout()
+        ax.set_xticks(range(len(days)))
+        ax.set_xticklabels([d.strftime("%d.%m") for d in days], rotation=45, ha="right")
+        ax.set_yticks(range(len(labels)))
+        ax.set_yticklabels(labels)
+        for i, row in enumerate(matrix):
+            for j, val in enumerate(row):
+                ax.text(j, i, str(val), ha="center", va="center", fontsize=8)
+        fig.colorbar(img, ax=ax, label="часы")
+        fig.tight_layout()
 
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=110)
-    plt.close(fig)
-    return buf.getvalue()
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=110)
+        return buf.getvalue()
+    finally:
+        plt.close(fig)

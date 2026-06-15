@@ -31,3 +31,20 @@ def test_load_summary_aggregates_and_renders():
     ]
     png = LoadSummaryUseCase().execute([p], allocs, START, days=14)
     assert png.startswith(_PNG_MAGIC)
+
+
+def _boom(_a):
+    raise ValueError("boom")
+
+
+def test_render_gantt_closes_figure_on_error():
+    # regression (plan 024): an exception mid-render must still close the figure
+    # (finally), so pyplot's global registry does not leak.
+    import matplotlib.pyplot as plt
+    import pytest
+
+    before = set(plt.get_fignums())
+    a = Assignment(uuid4(), uuid4(), START, date(2026, 6, 3), allocations=())
+    with pytest.raises(ValueError):
+        render_gantt([a], START, label_for=_boom)
+    assert set(plt.get_fignums()) == before  # no figure leaked

@@ -38,21 +38,31 @@ and update your row when done.
 | 015 | Anthropic client timeout/retries + explain fallback | P2 | S | — | DONE (`1e7757e`) |
 | 016 | Persist template tasks to tasks table (web visibility) | P2 | M | 014 | DONE (`a377f23`) |
 | 017 | Migrate python-jose → PyJWT | P3 | S | — | DONE (`3c19599`) |
-| 018 | Gate + validate `capture_task` (write-gate bypass) | P1 | S | — | TODO |
-| 019 | Load board: drop round-before-ceil (true slot load) | P1 | S | — | TODO |
+| 018 | Gate + validate `capture_task` (write-gate bypass) | P1 | S | — | DONE (2026-06-15; capture → admin-only per decision) |
+| 019 | Load board: drop round-before-ceil (true slot load) | P1 | S | — | DONE (2026-06-15) |
 | 020 | Board reassign: validate ids, single people query | P2 | S | — | TODO |
 | 021 | Graceful shutdown + scheduler job error handling | P2 | M | — | TODO |
 | 022 | `/whatif`: faithful baseline (real deps + durations) | P2 | M | — | TODO |
-| 023 | Capability coverage invariant stays in [0,1] | P2 | S | — | TODO |
-| 024 | Guard matplotlib figure leak (try/finally close) | P3 | S | — | TODO |
+| 023 | Capability coverage invariant stays in [0,1] | P2 | S | — | DONE (2026-06-15) |
+| 024 | Guard matplotlib figure leak (try/finally close) | P3 | S | — | DONE (2026-06-15) |
 | 025 | Seed: scope capability rebuild (no global wipe) | P3 | S–M | — | TODO |
 
 **Executed 2026-06-11** by dispatched executors on worktree branch
 `advisor/batch-001-017` (worktree: `../planner_dev-advisor`, baseline
 `dfeede1` = snapshot of the dirty tree). All 17 reviewed and APPROVED.
 Final gate on the branch: 404 unit tests pass, `ruff` clean,
-`mypy src/planner --strict` clean (78 files). **Not yet integrated into the
-user's branch** — see worktree for the commits. Integration recipe:
+`mypy src/planner --strict` clean (78 files).
+
+> **✅ INTEGRATED INTO `main` on 2026-06-15** via the patch path
+> (`git apply` of `dfeede1..3c19599`). WIP snapshotted first at `7b9af2e`, the
+> 17 fixes committed at `f13f8e8` on top of `442c9a4`. Post-integration gates
+> on `main`: `ruff check src tests` clean, `mypy src/planner --strict` clean
+> (78 files), `uv run pytest tests/unit` = 404 passed. `uv sync` swapped
+> python-jose → pyjwt (plan 017). Not pushed. (10 `ruff check .` findings remain
+> in `alembic/versions/*` template code — outside the `src tests` gate, not from
+> this batch.)
+
+Original (pre-integration) recipe, for reference:
 commit/stash your working tree, then
 `git -C ../planner_dev-advisor diff dfeede1..HEAD | git apply` (or
 cherry-pick `fc63459..3c19599`), then `uv sync --extra dev` (017 changed

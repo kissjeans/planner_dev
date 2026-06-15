@@ -102,3 +102,16 @@ def test_schedule_slots_total_per_task():
     assert brief.slots == 6  # 24h → 6 slots total
     assert brief.task_id == str(_T1)
     assert brief.assignee_id == str(_A)
+
+
+def test_fractional_per_day_load_not_undercounted():
+    # regression (plan 019): 9h over 2 days = 4.5h/day. The old round(4.5)->4->1
+    # slot undercounted; ceil(4.5/4)=2 is the true load.
+    people = [PersonRecord(_A, "Андрей", capacity_h=8)]
+    tasks = [_task(_T1, "Бриф", "МТС", "high", "not_done",
+                   date(2026, 6, 8), date(2026, 6, 9), 9, _A, "Андрей",
+                   date(2026, 6, 10))]
+    b = AdminBoardUseCase().build(tasks=tasks, people=people, start=_START, days=4)
+    a = b.load_rows[0]
+    assert a.slots[0] == 2  # ceil(4.5/4)=2, not round(4.5)->4->1
+    assert a.slots[1] == 2

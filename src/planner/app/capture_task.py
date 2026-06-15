@@ -32,7 +32,7 @@ class CaptureTaskUseCase:
         self, name: str | None, actor: PersonRecord | None
     ) -> ProjectRecord:
         actor_uuid = actor.id if actor else None
-        target = name or INBOX_PROJECT
+        target = (name or "").strip() or INBOX_PROJECT
         existing = await self._repo.get_project_by_title(target)
         if existing is not None:
             return existing

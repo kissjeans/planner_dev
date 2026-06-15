@@ -35,6 +35,15 @@ def test_covered_and_missing_skills_reported():
     assert s.missing_skills == ("Редактура",)
 
 
+def test_coverage_capped_with_duplicate_variant_skills():
+    # regression: case/whitespace-variant dupes must not push coverage above 1.0
+    c = _candidate("X", {"копирайтинг"})
+    (s,) = suggest_assignees(["Копирайтинг", " копирайтинг "], [c])
+    assert s.coverage == 1.0
+    assert s.covered_skills == ("Копирайтинг",)
+    assert s.missing_skills == ()
+
+
 def test_matching_is_case_insensitive():
     c = _candidate("X", {"копирайтинг"})
     (s,) = suggest_assignees(["  КОПИРАЙТИНГ "], [c])
