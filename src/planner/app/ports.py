@@ -176,6 +176,10 @@ class RepoPort(Protocol):
         self, person_id: UUID, day: date, capacity_h: int, reason: str | None
     ) -> None: ...
 
+    async def list_day_overrides(self) -> tuple[Any, ...]:
+        """All per-person per-day capacity overrides as domain ``DayOverride``s."""
+        ...
+
     async def add_audit(
         self,
         actor_id: UUID | None,

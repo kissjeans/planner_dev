@@ -29,6 +29,9 @@ from planner.domain.models import (
     Assignment as DomainAssignment,
 )
 from planner.domain.models import (
+    DayOverride as DomainDayOverride,
+)
+from planner.domain.models import (
     Dependency as DomainDependency,
 )
 from planner.domain.models import (
@@ -242,6 +245,18 @@ class SqlAlchemyRepo:
             else:
                 existing.capacity_h = capacity_h
                 existing.reason = reason
+
+    async def list_day_overrides(self) -> tuple[DomainDayOverride, ...]:
+        from planner.infra.db.models import DayOverride
+
+        async with self._sf() as s:
+            rows = await s.scalars(select(DayOverride))
+            return tuple(
+                DomainDayOverride(
+                    person_id=o.person_id, day=o.day, capacity_h=o.capacity_h
+                )
+                for o in rows
+            )
 
     async def update_task_schedule(
         self, task_id: UUID, start: date | None, end: date | None, person_id: UUID | None

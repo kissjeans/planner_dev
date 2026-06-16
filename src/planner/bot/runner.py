@@ -12,6 +12,7 @@ from planner.app.ports import RepoPort
 from planner.bot.handlers import (
     confirm,
     load,
+    replan,
     start,
     suggest,
     task_router,
@@ -93,6 +94,7 @@ def build_dispatcher(
     dp.include_router(whatif.router)
     dp.include_router(confirm.router)
     dp.include_router(vacation.router)
+    dp.include_router(replan.router)
     return dp
 
 

@@ -80,6 +80,9 @@ class FakeRepo:
     async def upsert_day_override(self, person_id, day, capacity_h, reason) -> None:
         self.overrides.append((person_id, day, capacity_h, reason))
 
+    async def list_day_overrides(self):
+        return tuple(getattr(self, "day_overrides", ()))
+
     async def set_project_status(self, project_id: UUID, status: str) -> None:
         p = self.projects.get(project_id)
         if p is not None:
