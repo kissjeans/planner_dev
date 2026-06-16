@@ -601,7 +601,8 @@ async def test_handle_voice_stt_returns_empty_string():
     await handle_voice(
         msg, parser, {"is_admin": False}, stt=stt  # type: ignore[arg-type]
     )
-    assert "распознать" in answers.calls[0]
+    # ack is calls[0]; error reply is calls[1] (new ack+timeout flow)
+    assert any("распознать" in c for c in answers.calls)
 
 
 @pytest.mark.asyncio
@@ -640,6 +641,63 @@ async def test_handle_voice_missing_file_path():
     stt = SimpleNamespace(transcribe=AsyncMock())
     await handle_voice(msg, _FakeParser(intent), {"is_admin": False}, stt=stt)  # type: ignore[arg-type]
     assert "Не удалось получить" in answers.calls[0]
+
+
+@pytest.mark.asyncio
+async def test_handle_voice_sends_ack():
+    """User gets a '🎙 Распознаю…' ack before transcription completes."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from planner.bot.handlers.task_router import handle_voice
+
+    sent = []
+    ack = SimpleNamespace(delete=AsyncMock())
+    msg = SimpleNamespace(
+        voice=SimpleNamespace(file_size=100, file_id="f"),
+        bot=SimpleNamespace(
+            get_file=AsyncMock(return_value=SimpleNamespace(file_path="p")),
+            download_file=AsyncMock(return_value=SimpleNamespace(read=lambda: b"x")),
+        ),
+        answer=AsyncMock(side_effect=lambda *a, **k: (sent.append(a[0]), ack)[1]),
+    )
+
+    class _P:  # parser; capture path not exercised here
+        async def parse(self, text, ctx):
+            from planner.domain.intent import ClarifyIntent
+            return ClarifyIntent(question="x")
+
+    stt = SimpleNamespace(transcribe=AsyncMock(return_value="загрузка"))
+    await handle_voice(msg, _P(), {"is_admin": False}, stt=stt)  # type: ignore[arg-type]
+    assert any("Распозна" in s for s in sent)
+
+
+@pytest.mark.asyncio
+async def test_handle_voice_timeout_replies(monkeypatch):
+    """A slow transcription times out and tells the user, not hangs."""
+    import asyncio as _aio
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from planner.bot.handlers import task_router
+
+    monkeypatch.setattr(task_router, "_STT_TIMEOUT_S", 0.01)
+    sent = []
+    ack = SimpleNamespace(delete=AsyncMock())
+    msg = SimpleNamespace(
+        voice=SimpleNamespace(file_size=100, file_id="f"),
+        bot=SimpleNamespace(
+            get_file=AsyncMock(return_value=SimpleNamespace(file_path="p")),
+            download_file=AsyncMock(return_value=SimpleNamespace(read=lambda: b"x")),
+        ),
+        answer=AsyncMock(side_effect=lambda *a, **k: (sent.append(a[0]), ack)[1]),
+    )
+
+    async def _slow(*a, **k):
+        await _aio.sleep(1)
+        return "never"
+
+    stt = SimpleNamespace(transcribe=_slow)
+    await task_router.handle_voice(msg, object(), {"is_admin": False}, stt=stt)  # type: ignore[arg-type]
+    assert any("Долго распознаю" in s for s in sent)
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,7 @@ plan. Without those deps it degrades to a human-readable interpretation.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date
 from typing import Any
 from uuid import UUID
@@ -44,6 +45,7 @@ from planner.infra.stt.ports import STTPort
 
 router = Router(name="task")
 _MAX_VOICE_BYTES = 20 * 1024 * 1024  # 20 MB cap on voice downloads
+_STT_TIMEOUT_S = 60  # past this, ask the user to retry — never hang silently
 
 
 def _plan_keyboard(pv_id: UUID) -> InlineKeyboardMarkup:
@@ -241,9 +243,24 @@ async def handle_voice(
     if audio is None:
         await message.answer("Не удалось скачать голосовое сообщение — напиши текстом.")
         return
-    text = await stt.transcribe(audio.read(), "voice.ogg")
+    ack = await message.answer("🎙 Распознаю…")
+    timed_out = False
+    try:
+        text = await asyncio.wait_for(
+            stt.transcribe(audio.read(), "voice.ogg"), _STT_TIMEOUT_S
+        )
+    except asyncio.TimeoutError:
+        text, timed_out = None, True
+    try:
+        await ack.delete()
+    except Exception:  # noqa: BLE001 — best-effort cleanup
+        pass
     if not text:
-        await message.answer("Не удалось распознать голос — напиши текстом.")
+        await message.answer(
+            "Долго распознаю — пришли покороче или текстом."
+            if timed_out
+            else "Не удалось распознать голос — напиши текстом."
+        )
         return
     await _handle_text(
         message, text, parser, actor,
