@@ -81,7 +81,10 @@ class BasicIntentParser:
     def parse_sync(self, text: str, ctx: ChatContext) -> Intent:
         low = text.lower().lstrip("/").strip()
 
-        _load_kw = ("load", "загруз", "нагруз", "загузк", "нагузк")
+        _load_kw = (
+            "load", "загруз", "нагруз", "загузк", "нагузк",
+            "слот", "свобод", "занят", "доступ",
+        )
         if any(kw in low for kw in _load_kw) or "/load" in text:
             return LoadIntent(person_name=_resolve_person(text, ctx))
 
@@ -122,6 +125,12 @@ class BasicIntentParser:
                     deadline=_parse_date(text, ctx.today),
                 )
 
+        # A question that matched no actionable intent is not a task — capturing
+        # it would store garbage. Ask again instead.
+        if low.endswith("?"):
+            return ClarifyIntent(
+                question="Это вопрос о загрузке? Уточни: «сколько слотов у Рая?»"
+            )
         # Default: capture the message as a task (low-friction path). Only
         # truly empty input falls through to clarify.
         if low:
