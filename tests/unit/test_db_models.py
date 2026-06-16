@@ -19,6 +19,7 @@ from planner.infra.db.models import (
     RoleSkill,
     Skill,
     Task,
+    TaskHistory,
     Template,
     TemplateDependency,
     TemplateTask,
@@ -164,7 +165,17 @@ def test_task_required_columns():
     cols = _column_names(Task)
     assert {"id", "project_id", "template_task_id", "name", "duration_hours",
             "start_date", "end_date", "status", "is_preliminary",
-            "is_splittable", "allow_two_assignees"} <= cols
+            "is_splittable", "allow_two_assignees", "source"} <= cols
+
+
+def test_task_history_tablename():
+    assert TaskHistory.__tablename__ == "task_history"
+
+
+def test_task_history_required_columns():
+    cols = _column_names(TaskHistory)
+    assert {"id", "person_id", "task_name", "project_title",
+            "completed_at", "skills"} <= cols
 
 
 def test_assignment_required_columns():
@@ -233,3 +244,9 @@ def test_template_dependency_has_link_type_check():
     constraints = TemplateDependency.__table__.constraints
     check_names = {c.name for c in constraints if hasattr(c, "name")}
     assert "ck_link_type_template" in check_names
+
+
+def test_task_has_source_check():
+    constraints = Task.__table__.constraints
+    check_names = {c.name for c in constraints if hasattr(c, "name")}
+    assert "ck_task_source" in check_names

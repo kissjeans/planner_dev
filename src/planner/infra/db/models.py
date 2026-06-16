@@ -204,11 +204,18 @@ class Task(Base):
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="not_done")
+    source: Mapped[str] = mapped_column(Text, nullable=False, default="bot_formed")
     is_preliminary: Mapped[bool] = mapped_column(nullable=False, default=False)
     is_splittable: Mapped[bool] = mapped_column(nullable=False, default=False)
     allow_two_assignees: Mapped[bool] = mapped_column(nullable=False, default=False)
 
     project: Mapped["Project"] = relationship(back_populates="tasks")
+
+    __table_args__ = (
+        CheckConstraint(
+            "source IN ('bot_formed','template')", name="ck_task_source"
+        ),
+    )
 
 
 class Assignment(Base):
@@ -297,3 +304,26 @@ class AuditLog(Base):
         UUID(as_uuid=True), nullable=True
     )
     payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+
+
+class TaskHistory(Base):
+    """Completed tasks per person — groundwork for history-based matching (spec Ф4).
+
+    No use case wires this yet; it exists so future executor suggestion can
+    factor in what a person has done before (spec section 5, point 2).
+    """
+
+    __tablename__ = "task_history"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    person_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("people.id"), nullable=False
+    )
+    task_name: Mapped[str] = mapped_column(Text, nullable=False)
+    project_title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    completed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    skills: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)

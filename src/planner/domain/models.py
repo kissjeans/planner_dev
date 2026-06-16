@@ -41,6 +41,7 @@ class Task:
     is_splittable: bool = False
     allow_two_assignees: bool = False
     status: str = "not_done"  # not_done / done / preliminary / confirmed
+    source: str = "bot_formed"  # 'bot_formed' | 'template' (provenance, spec 4)
     fixed_start: date | None = None
     fixed_end: date | None = None
     fixed_assignee_id: UUID | None = None

@@ -82,6 +82,7 @@ def instantiate_template(
             project_id=project_id,
             is_splittable=spec.is_splittable,
             allow_two_assignees=spec.allow_two_assignees,
+            source="template",
         )
         for spec in template.tasks
     )

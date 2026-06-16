@@ -202,6 +202,7 @@ class SqlAlchemyRepo:
                     duration_hours=duration_hours,
                     end_date=deadline,
                     status="not_done",
+                    source="bot_formed",
                 )
             )
         return TaskRecord(
@@ -538,6 +539,7 @@ class SqlAlchemyRepo:
                         start_date=a.start_date if a else None,
                         end_date=a.end_date if a else None,
                         status="not_done",
+                        source=t.source,
                     )
                 )
                 if a is not None:

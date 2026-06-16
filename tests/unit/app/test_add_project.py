@@ -58,6 +58,8 @@ def test_instantiate_template_remaps_ords_to_fresh_uuids():
     assert len(tasks) == 2
     assert len({t.id for t in tasks}) == 2  # unique ids
     assert len(deps) == 1
+    # Template-instantiated tasks carry the 'template' provenance (spec 4).
+    assert all(t.source == "template" for t in tasks)
     # Dependency edge points the design task at the brief task.
     design = next(t for t in tasks if t.name == "Дизайн")
     assert deps[0].task_id == design.id

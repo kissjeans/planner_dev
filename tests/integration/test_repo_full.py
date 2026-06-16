@@ -135,16 +135,17 @@ async def test_get_plan_version_missing_returns_none(repo):
 @pytest.mark.asyncio
 async def test_set_plan_version_status(repo, committed_plan):
     pv_id, _ = committed_plan
-    await repo.set_plan_version_status(pv_id, "archived")
+    # status is constrained to proposed/committed (spec 4 / ck_plan_version_status)
+    await repo.set_plan_version_status(pv_id, "proposed")
     pv = await repo.get_plan_version(pv_id)
     assert pv is not None
-    assert pv.status == "archived"
+    assert pv.status == "proposed"
 
 
 @pytest.mark.asyncio
 async def test_set_plan_version_status_missing_id_no_crash(repo):
     # Should silently ignore missing IDs
-    await repo.set_plan_version_status(uuid4(), "archived")
+    await repo.set_plan_version_status(uuid4(), "proposed")
 
 
 # ---------------------------------------------------------------------------
@@ -268,8 +269,40 @@ async def test_create_task_inserts_row(repo, project, db_session_factory):
     )
     assert rec.name == "Захваченная задача"
     assert rec.end_date == date(2026, 6, 20)
+    # Chat-captured tasks are tagged 'bot_formed' (spec 4).
+    async with db_session_factory() as s:
+        rows = list(
+            await s.execute(
+                text("SELECT source FROM tasks WHERE id = :id"), {"id": rec.id}
+            )
+        )
+    assert rows[0][0] == "bot_formed"
     async with db_session_factory() as s, s.begin():
         await s.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": rec.id})
+
+
+@pytest.mark.asyncio
+async def test_save_project_tasks_tags_source_template(
+    repo, project, db_session_factory
+):
+    """save_project_tasks persists each task's provenance (spec 4)."""
+    from planner.domain.models import Task as DomainTask
+
+    tid = uuid4()
+    task = DomainTask(
+        id=tid, name="Тплт задача", duration_hours=8,
+        allowed_person_ids=(), project_id=project, source="template",
+    )
+    await repo.save_project_tasks(project, (task,), ())
+    async with db_session_factory() as s:
+        rows = list(
+            await s.execute(
+                text("SELECT source FROM tasks WHERE id = :id"), {"id": tid}
+            )
+        )
+    assert rows[0][0] == "template"
+    async with db_session_factory() as s, s.begin():
+        await s.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": tid})
 
 
 @pytest.mark.asyncio
@@ -300,7 +333,7 @@ async def test_get_committed_plan_found(repo, committed_plan, project):
     pv_id, payload = committed_plan
     result = await repo.get_committed_plan(project)
     assert result is not None
-    assert result.status in ("committed", "archived")
+    assert result.status == "committed"
 
 
 @pytest.mark.asyncio

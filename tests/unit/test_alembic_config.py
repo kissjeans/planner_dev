@@ -26,6 +26,7 @@ EXPECTED_TABLES = frozenset(
         "day_overrides",
         "plan_versions",
         "audit_log",
+        "task_history",
         # capability layer
         "roles",
         "skills",
@@ -84,11 +85,11 @@ def test_base_metadata_has_all_11_tables():
 
 
 def test_base_metadata_table_count():
-    """Sanity-check: 16 tables (12 domain/audit + 4 capability)."""
+    """Sanity-check: 17 tables (13 domain/audit + 4 capability)."""
     import planner.infra.db.models  # noqa: F401
     from planner.infra.db.base import Base
 
-    assert len(Base.metadata.tables) == 16
+    assert len(Base.metadata.tables) == 17
 
 
 # ---------------------------------------------------------------------------
