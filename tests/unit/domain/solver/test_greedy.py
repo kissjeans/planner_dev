@@ -126,6 +126,18 @@ def test_overload_flagged_when_duration_exceeds_capacity():
     assert any(r.kind == "overload" for r in res.risks)
 
 
+def test_overload_message_is_in_days_not_hours():
+    """Spec §6: user-facing overload text shows working days, not raw hours."""
+    p = _person(cap=8)
+    t = _task([p.id], hours=16, splittable=False)  # 16h on an 8h/day person → 2 days
+    res = _solve([p], [t])
+    overload = next(r for r in res.risks if r.kind == "overload")
+    # No raw hour markers ("h"/"ч") leak into the user-facing message.
+    assert "h " not in overload.message and "ч" not in overload.message
+    assert "дн" in overload.message  # framed in working days
+    assert "2" in overload.message  # 16h ÷ 8h/day = 2 working days of load
+
+
 def test_deadline_missed_flag():
     p = _person(cap=8)
     tasks = [_task([p.id], 8, name=f"t{i}") for i in range(3)]

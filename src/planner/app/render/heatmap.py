@@ -9,6 +9,11 @@ import matplotlib
 
 matplotlib.use("Agg")  # headless: no display, render straight to bytes
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.ticker import FuncFormatter  # noqa: E402
+
+# Spec §6 hybrid: the colour scale is shown to users in working days. Cells keep
+# precise hours (exact solver math); the colorbar reframes them as day-load.
+COLORBAR_LABEL = "рабочие дни"
 
 
 def render_heatmap(
@@ -30,7 +35,12 @@ def render_heatmap(
         for i, row in enumerate(matrix):
             for j, val in enumerate(row):
                 ax.text(j, i, str(val), ha="center", va="center", fontsize=8)
-        fig.colorbar(img, ax=ax, label="часы")
+        cbar = fig.colorbar(img, ax=ax, label=COLORBAR_LABEL)
+        # Tick the scale in whole working days (hours ÷ capacity); cells keep hours.
+        cap = max(capacity, 1)
+        cbar.ax.yaxis.set_major_formatter(
+            FuncFormatter(lambda hours, _pos: f"{hours / cap:.0f}")
+        )
         fig.tight_layout()
 
         buf = io.BytesIO()

@@ -17,6 +17,14 @@ def test_heatmap_returns_png():
     assert png.startswith(_PNG_MAGIC)
 
 
+def test_heatmap_colorbar_labelled_in_days_not_hours():
+    """Spec §6: the load scale is shown to users in working days, not hours."""
+    from planner.app.render.heatmap import COLORBAR_LABEL
+
+    assert "дн" in COLORBAR_LABEL  # days
+    assert "час" not in COLORBAR_LABEL  # not "часы"
+
+
 def test_gantt_returns_png():
     a = Assignment(uuid4(), uuid4(), START, date(2026, 6, 3), allocations=())
     png = render_gantt([a], START)

@@ -33,6 +33,7 @@ from planner.domain.solver.critical_path import (
     presented_earliest_end as _presented_earliest_end,
 )
 from planner.domain.solver.diff import diff as _diff
+from planner.domain.units import hours_to_working_days
 
 # Planning horizon: how far ahead the greedy search is allowed to look.
 HORIZON_DAYS = 365
@@ -261,10 +262,13 @@ class GreedySolver:
 def _overload_flags(idx: CapacityIndex) -> list[RiskFlag]:
     flags = []
     for pid, day, used, base in idx.overloads():
+        # Internal math stays in hours; the user-facing message is in working
+        # days (spec §6): the day's capacity is the 1-day norm.
+        used_days = hours_to_working_days(used, base)
         flags.append(
             RiskFlag(
                 kind="overload",
-                message=f"{used}h used vs {base}h capacity on {day}.",
+                message=f"≈{used_days} раб. дн. нагрузки на 1 день, {day}.",
                 person_id=pid,
                 day=day,
             )
