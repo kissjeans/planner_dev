@@ -28,7 +28,9 @@ INTENT_SYSTEM_PROMPT = """\
 - what_if: смоделировать изменение. operation одно из
   shift_deadline|add_person|switch_to_lite|drop_project + связанные поля.
 - vacation: отпуск. person_name, day_from, day_to, capacity_h (0 = полный день).
-- confirm: подтвердить последний предложенный план.
+- confirm: подтвердить последний предложенный план. Короткое согласие —
+  «ок», «ok», «да», «ага», «подтверждаю», «согласен», «го» — это confirm
+  (НЕ clarify).
 - assign: переназначить существующую задачу. task_ref, person_name.
 - clarify: ТОЛЬКО если сообщение — бессмыслица/набор символов и из него нельзя
   выделить задачу. Если есть хоть какая-то задача — используй capture_task.

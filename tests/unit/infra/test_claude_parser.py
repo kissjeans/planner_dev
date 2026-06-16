@@ -217,3 +217,10 @@ async def test_parse_uses_temperature_zero():
     await parser.parse("загрузка команды", ctx)
     kwargs = parser._client.messages.create.call_args.kwargs
     assert kwargs["temperature"] == 0
+
+
+def test_intent_prompt_covers_short_confirm():
+    p = INTENT_SYSTEM_PROMPT.lower()
+    assert "подтвержд" in p
+    for w in ("ок", "да"):
+        assert w in p
