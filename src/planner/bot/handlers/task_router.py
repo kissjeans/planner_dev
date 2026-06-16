@@ -30,7 +30,7 @@ from planner.app.confirm_plan import (
     PlanNotProposedError,
 )
 from planner.app.explain_plan import ExplainPlanUseCase
-from planner.app.ports import PersonRecord, RepoPort
+from planner.app.ports import PersonRecord, RepoPort, TaskMeta
 from planner.bot.states import PlanEditState
 from planner.domain.intent import (
     AddProjectIntent,
@@ -108,6 +108,58 @@ async def build_add_project_reply(
     )
     text = f"Проект «{result.project.title}» — предложенный план:\n{summary}"
     return text, result.plan_version_id
+
+
+def _match_tasks(task_ref: str, tasks: list[TaskMeta]) -> list[TaskMeta]:
+    """Best-effort resolve a free-text task reference to candidate tasks.
+
+    Prefers an exact (case-insensitive) name match; otherwise falls back to
+    tasks whose name appears inside the reference (handles refs like
+    «Дизайн обложки в проекте Альфа»). Returns all candidates so the caller can
+    detect ambiguity instead of guessing.
+    """
+    ref = task_ref.strip().casefold()
+    if not ref:
+        return []
+    exact = [t for t in tasks if t.task_name.casefold() == ref]
+    if exact:
+        return exact
+    return [t for t in tasks if t.task_name.casefold() in ref]
+
+
+async def build_assign_reply(
+    intent: AssignIntent, *, repo: RepoPort, actor_id: UUID | None
+) -> str:
+    """Resolve person + task and reassign, or return a clarifying question.
+
+    Reuses repo.set_task_assignee (persisted assignment) and reassign_in_plan
+    (committed-plan payload) — the same pair the web board uses (board.py:78).
+    Never guesses on an ambiguous/unknown task; asks the manager to clarify.
+    """
+    person = await repo.get_person_by_name(intent.person_name)
+    if person is None:
+        return f"Не нашёл человека «{intent.person_name}» — уточни имя."
+
+    candidates = _match_tasks(intent.task_ref, await repo.list_tasks_with_meta())
+    if not candidates:
+        return f"Не нашёл задачу «{intent.task_ref}» — это не наша задача? Уточни название."
+    if len(candidates) > 1:
+        names = ", ".join(sorted({t.task_name for t in candidates}))
+        return f"Нашёл несколько задач ({names}) — уточни, какую назначить."
+
+    task = candidates[0]
+    moved = await repo.set_task_assignee(task.task_id, person.id)
+    if not moved:
+        return f"Не нашёл задачу «{intent.task_ref}» — уточни название."
+    await repo.reassign_in_plan(task.task_id, person.id)
+    await repo.add_audit(
+        actor_id,
+        "reassign_task",
+        "task",
+        task.task_id,
+        {"person_id": str(person.id)},
+    )
+    return f"Назначил «{task.task_name}» на {person.name}."
 
 
 async def build_capture_reply(
@@ -244,6 +296,18 @@ async def _handle_text(
             return None
         await message.answer(
             await build_capture_reply(intent, repo=repo, actor_record=actor_record)
+        )
+        return None
+
+    if (
+        isinstance(intent, AssignIntent)
+        and repo is not None
+        and actor_record is not None
+    ):
+        await message.answer(
+            await build_assign_reply(
+                intent, repo=repo, actor_id=actor_record.id
+            )
         )
         return None
 
