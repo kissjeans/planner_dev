@@ -18,7 +18,12 @@ INTENT_SYSTEM_PROMPT = """\
 - add_project: ТОЛЬКО явное создание проекта с планированием
   («создай проект», «новый проект ... распланируй»). Поля: title,
   template_code (standard|lite), deadline, brief_return_date, notes.
-- load: показать загрузку. person_name (или пусто = вся команда), date_range.
+- load: показать загрузку/доступность. person_name (или пусто = вся команда),
+  date_range. Слова-маркеры: загрузка, нагрузка, слоты, свободен, свободно,
+  занят, доступно, доступность, сколько времени, успеваем, кто чем занят.
+  ВАЖНО: ВОПРОС о доступности/загрузке/слотах человека или команды — это load
+  (а НЕ clarify и НЕ capture_task). Пример: «сколько слотов у Рая?» → load
+  person_name=Рай; «кто сейчас свободен?» → load (пусто).
 - what_if: смоделировать изменение. operation одно из
   shift_deadline|add_person|switch_to_lite|drop_project + связанные поля.
 - vacation: отпуск. person_name, day_from, day_to, capacity_h (0 = полный день).

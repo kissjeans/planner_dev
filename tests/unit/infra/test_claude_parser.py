@@ -197,6 +197,15 @@ async def test_explain_plan_falls_back_to_summary_on_error():
     assert out == "сводка плана"
 
 
+def test_intent_prompt_covers_availability_load():
+    """load must cover availability vocabulary and availability questions."""
+    p = INTENT_SYSTEM_PROMPT.lower()
+    for marker in ("слот", "свобод", "занят", "доступ"):
+        assert marker in p, f"prompt missing load marker: {marker}"
+    # availability questions must be steered to load, not clarify
+    assert "вопрос" in p and "load" in p
+
+
 @pytest.mark.asyncio
 async def test_parse_uses_temperature_zero():
     """Intent classification must be deterministic (temperature=0)."""
