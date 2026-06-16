@@ -84,3 +84,15 @@ async def test_transcribe_default_filename(mock_model_cls):
     stt = FasterWhisperSTT()
     result = await stt.transcribe(b"audio")
     assert result == "привет мир"
+
+
+@pytest.mark.asyncio
+async def test_transcribe_passes_initial_prompt(mock_model_cls):
+    from planner.infra.stt.faster_whisper import FasterWhisperSTT, _INITIAL_PROMPT
+
+    _cls, model = mock_model_cls
+    stt = FasterWhisperSTT()
+    await stt.transcribe(b"data")
+    kwargs = model.transcribe.call_args.kwargs
+    assert kwargs["initial_prompt"] == _INITIAL_PROMPT
+    assert "Рай" in _INITIAL_PROMPT and "бриф" in _INITIAL_PROMPT

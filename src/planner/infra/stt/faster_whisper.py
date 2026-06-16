@@ -18,10 +18,21 @@ log = structlog.get_logger(__name__)
 
 _MODEL_SIZE = "small"
 
+# Biases the decoder toward team names and presales jargon the base model
+# otherwise mangles ("ресёрч"→"ресурс", "Рай"→"Ирай"). Tune as the team changes.
+_INITIAL_PROMPT = (
+    "Планирование задач команды пресейла. "
+    "Имена: Андрей, Рай, Айгуль, Лёша, Катя, Дима. "
+    "Термины: бриф, ресёрч, КП, дедлайн, оффер, лид, пресейл, МТС, Мегафон."
+)
+
 
 class FasterWhisperSTT:
-    def __init__(self, model_size: str = _MODEL_SIZE) -> None:
+    def __init__(
+        self, model_size: str = _MODEL_SIZE, initial_prompt: str | None = _INITIAL_PROMPT
+    ) -> None:
         self._model_size = model_size
+        self._initial_prompt = initial_prompt
         self._model: Any = None  # lazy-loaded on first transcribe
 
     def _load_model(self) -> Any:
@@ -35,7 +46,9 @@ class FasterWhisperSTT:
 
     def _transcribe_sync(self, audio: bytes) -> str:
         model = self._load_model()
-        segments, _info = model.transcribe(io.BytesIO(audio), language="ru")
+        segments, _info = model.transcribe(
+            io.BytesIO(audio), language="ru", initial_prompt=self._initial_prompt
+        )
         return "".join(segment.text for segment in segments).strip()
 
     async def transcribe(self, audio: bytes, filename: str = "voice.ogg") -> str | None:
