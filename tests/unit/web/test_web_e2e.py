@@ -92,7 +92,6 @@ def _settings() -> Settings:
         bot_token=BOT,
         team_chat_id=1,
         anthropic_api_key="x",
-        openai_api_key="x",
         jwt_secret=JWT_SECRET,
         admin_ids="42",
         debug=False,

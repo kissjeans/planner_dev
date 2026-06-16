@@ -70,7 +70,6 @@ class TestSettingsValidation:
         monkeypatch.setenv("BOT_TOKEN", "test_token")
         monkeypatch.setenv("TEAM_CHAT_ID", "123456789")
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
         s = Settings(_env_file=None)
         assert s.anthropic_api_key == ""
