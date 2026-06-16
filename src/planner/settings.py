@@ -30,9 +30,6 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     """Anthropic API key for Claude models (optional — falls back to BasicIntentParser)"""
 
-    openai_api_key: str = ""
-    """OpenAI API key for Whisper STT (optional — voice messages disabled without it)"""
-
     # Web
     webhook_secret: str = ""
     """Secret for webhook validation (optional)"""

@@ -14,7 +14,6 @@ class TestSettingsValidation:
         monkeypatch.setenv("BOT_TOKEN", "test_token")
         monkeypatch.setenv("TEAM_CHAT_ID", "123456789")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
         settings = Settings()
 
@@ -23,7 +22,6 @@ class TestSettingsValidation:
         assert settings.bot_token == "test_token"
         assert settings.team_chat_id == 123456789
         assert settings.anthropic_api_key == "sk-ant-test"
-        assert settings.openai_api_key == "sk-test"
 
     def test_settings_missing_database_url_raises_validation_error(self, monkeypatch):
         """Test that missing DATABASE_URL raises ValidationError."""
@@ -77,18 +75,6 @@ class TestSettingsValidation:
         s = Settings(_env_file=None)
         assert s.anthropic_api_key == ""
 
-    def test_settings_missing_openai_api_key_defaults_to_empty(self, monkeypatch):
-        """openai_api_key is optional; absent means STT/voice is disabled."""
-        monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost/db")
-        monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
-        monkeypatch.setenv("BOT_TOKEN", "test_token")
-        monkeypatch.setenv("TEAM_CHAT_ID", "123456789")
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-
-        s = Settings(_env_file=None)
-        assert s.openai_api_key == ""
-
     def test_settings_with_optional_fields_defaults(self, monkeypatch):
         """Test that optional fields have correct default values."""
         monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost/db")
@@ -96,7 +82,6 @@ class TestSettingsValidation:
         monkeypatch.setenv("BOT_TOKEN", "test_token")
         monkeypatch.setenv("TEAM_CHAT_ID", "123456789")
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("WEBHOOK_SECRET", raising=False)
         monkeypatch.delenv("TIMEZONE", raising=False)
         monkeypatch.delenv("DEBUG", raising=False)
@@ -114,7 +99,6 @@ class TestSettingsValidation:
         monkeypatch.setenv("BOT_TOKEN", "test_token")
         monkeypatch.setenv("TEAM_CHAT_ID", "123456789")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
         monkeypatch.setenv("WEBHOOK_SECRET", "secret123")
         monkeypatch.setenv("TIMEZONE", "America/New_York")
         monkeypatch.setenv("DEBUG", "true")
@@ -132,7 +116,6 @@ class TestSettingsValidation:
         monkeypatch.setenv("BOT_TOKEN", "test_token")
         monkeypatch.setenv("TEAM_CHAT_ID", "987654321")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
         settings = Settings()
 
@@ -146,7 +129,6 @@ class TestSettingsValidation:
         monkeypatch.setenv("BOT_TOKEN", "test_token")
         monkeypatch.setenv("TEAM_CHAT_ID", "123456789")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
         monkeypatch.setenv("DEBUG", "1")
 
         settings = Settings()
@@ -160,7 +142,6 @@ class TestSettingsValidation:
         monkeypatch.setenv("BOT_TOKEN", "test_token")
         monkeypatch.setenv("TEAM_CHAT_ID", "123456789")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
         settings = get_settings()
 

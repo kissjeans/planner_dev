@@ -48,7 +48,7 @@ async def main() -> None:
     log.info(
         "startup",
         parser=parser_kind,
-        stt="whisper" if settings.openai_api_key else "off",
+        stt="faster-whisper",
         admin_ids=sorted(settings.admin_id_set),
         timezone=settings.timezone,
     )
