@@ -40,7 +40,7 @@ from planner.domain.models import DayAllocation
 from planner.domain.permissions import can_execute
 from planner.domain.solver.ports import SolverPort
 from planner.infra.llm.ports import ChatContext, IntentParserPort
-from planner.infra.stt.whisper import STTPort
+from planner.infra.stt.ports import STTPort
 
 router = Router(name="task")
 _MAX_VOICE_BYTES = 20 * 1024 * 1024  # 20 MB cap on voice downloads
