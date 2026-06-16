@@ -53,7 +53,7 @@ def test_discriminates_clarify():
 def test_discriminates_capture_task():
     i = _ta.validate_python(
         {"kind": "capture_task", "task_title": "подготовить бриф",
-         "assignee_name": "Андрей", "project_name": "МТС"}
+         "assignee_names": ["Андрей"], "project_name": "МТС"}
     )
     assert isinstance(i, CaptureTaskIntent)
     assert i.deadline is None
@@ -72,3 +72,17 @@ def test_capture_task_rejects_blank_title():
 
     with pytest.raises(ValidationError):
         CaptureTaskIntent(task_title="")
+
+
+def test_capture_task_accepts_multiple_assignees():
+    from planner.domain.intent import CaptureTaskIntent
+
+    i = CaptureTaskIntent(task_title="ресёрч по МТС", assignee_names=["Андрей", "Рай"])
+    assert i.assignee_names == ["Андрей", "Рай"]
+
+
+def test_capture_task_assignees_default_empty():
+    from planner.domain.intent import CaptureTaskIntent
+
+    i = CaptureTaskIntent(task_title="бриф")
+    assert i.assignee_names == []

@@ -68,7 +68,7 @@ class CaptureTaskIntent(BaseModel):
 
     kind: Literal["capture_task"] = "capture_task"
     task_title: str = Field(min_length=1, max_length=200)
-    assignee_name: str | None = Field(default=None, max_length=200)
+    assignee_names: list[str] = Field(default_factory=list, max_length=10)
     project_name: str | None = Field(default=None, max_length=200)
     deadline: date | None = None
 
