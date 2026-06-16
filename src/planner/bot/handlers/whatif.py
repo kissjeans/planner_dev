@@ -20,7 +20,6 @@ from planner.app.what_if import WhatIfUseCase
 from planner.bot.replies.plan_explainer import explain_diff
 from planner.domain.intent import WhatIfIntent
 from planner.domain.models import PlanRequest, Task
-from planner.domain.permissions import can_execute
 from planner.domain.solver.ports import SolverPort
 from planner.infra.llm.ports import ChatContext, IntentParserPort
 
@@ -80,9 +79,6 @@ async def handle_whatif(
     intent = await parser.parse(text, ChatContext(today=date.today()))
     if not isinstance(intent, WhatIfIntent):
         await message.answer("Это не похоже на сценарий «что-если». Переформулируй.")
-        return
-    if not can_execute(intent.kind, actor.get("is_admin", False)):
-        await message.answer("Только админ может править план.")
         return
 
     if repo is not None and solver is not None:

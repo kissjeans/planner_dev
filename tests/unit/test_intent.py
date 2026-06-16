@@ -63,6 +63,7 @@ def test_write_kinds_excludes_read_intents():
     assert "add_project" in WRITE_KINDS
     assert "load" not in WRITE_KINDS
     assert "clarify" not in WRITE_KINDS
+    assert "what_if" not in WRITE_KINDS  # what-if is read-only -> open to all
     assert "capture_task" in WRITE_KINDS  # capture writes -> gated to admins
 
 

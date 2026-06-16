@@ -95,6 +95,8 @@ Intent = Annotated[
 # Intents that mutate state — gated to admins by the permissions middleware.
 # capture_task writes (creates projects/tasks/assignments), so it is a write:
 # spec rule is "writes are admin-only, reads are open" (domain/permissions.py).
+# what_if is read-only (it re-solves in memory and never writes), so per spec
+# section 16 it is open to everyone and excluded here.
 WRITE_KINDS = frozenset(
-    {"add_project", "what_if", "vacation", "confirm", "assign", "capture_task"}
+    {"add_project", "vacation", "confirm", "assign", "capture_task"}
 )

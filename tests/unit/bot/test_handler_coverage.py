@@ -396,6 +396,19 @@ async def test_handle_whatif_no_repo_fallback():
     assert "Бета" in answers.calls[0]
 
 
+@pytest.mark.asyncio
+async def test_handle_whatif_allowed_for_non_admin():
+    # spec section 16: what-if is read-only -> a non-admin may run it.
+    intent = WhatIfIntent(operation="add_person", project_title="Бета")
+    msg, answers = _message("/whatif +человек в Бету")
+    parser = _FakeParser(intent)
+    await whatif_handler.handle_whatif(
+        msg, parser, {"is_admin": False}, repo=None, solver=None  # type: ignore[arg-type]
+    )
+    assert "Бета" in answers.calls[0]
+    assert "админ" not in answers.calls[0]
+
+
 # ---------------------------------------------------------------------------
 # handle_mention_or_dm — private chat path (no bot.get_me() needed)
 # ---------------------------------------------------------------------------
