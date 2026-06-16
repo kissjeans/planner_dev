@@ -20,7 +20,7 @@ _CAPTURE_HOURS = 8
 class CaptureResult:
     task_title: str
     project_title: str
-    assignee_name: str | None
+    assignee_names: list[str]
     deadline_iso: str | None
 
 
@@ -56,12 +56,12 @@ class CaptureTaskUseCase:
             actor_id=actor.id if actor else None,
         )
 
-        assignee_name: str | None = None
-        if intent.assignee_name:
-            person = await self._repo.get_person_by_name(intent.assignee_name)
+        assignee_names: list[str] = []
+        for name in intent.assignee_names:
+            person = await self._repo.get_person_by_name(name)
             if person is not None:
                 await self._repo.assign_task(task.id, person.id, _CAPTURE_HOURS)
-                assignee_name = person.name
+                assignee_names.append(person.name)
 
         await self._repo.add_audit(
             actor.id if actor else None,
@@ -71,12 +71,12 @@ class CaptureTaskUseCase:
             {
                 "title": intent.task_title,
                 "project": project.title,
-                "assignee": assignee_name,
+                "assignees": assignee_names,
             },
         )
         return CaptureResult(
             task_title=intent.task_title,
             project_title=project.title,
-            assignee_name=assignee_name,
+            assignee_names=assignee_names,
             deadline_iso=intent.deadline.isoformat() if intent.deadline else None,
         )
