@@ -8,6 +8,7 @@ plan. Without those deps it degrades to a human-readable interpretation.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from datetime import date
 from typing import Any
 from uuid import UUID
@@ -249,12 +250,10 @@ async def handle_voice(
         text = await asyncio.wait_for(
             stt.transcribe(audio.read(), "voice.ogg"), _STT_TIMEOUT_S
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         text, timed_out = None, True
-    try:
+    with contextlib.suppress(Exception):  # best-effort cleanup
         await ack.delete()
-    except Exception:  # noqa: BLE001 — best-effort cleanup
-        pass
     if not text:
         await message.answer(
             "Долго распознаю — пришли покороче или текстом."

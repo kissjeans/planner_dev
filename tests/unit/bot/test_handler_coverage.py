@@ -648,6 +648,7 @@ async def test_handle_voice_sends_ack():
     """User gets a '🎙 Распознаю…' ack before transcription completes."""
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
+
     from planner.bot.handlers.task_router import handle_voice
 
     sent = []
@@ -677,6 +678,7 @@ async def test_handle_voice_timeout_replies(monkeypatch):
     import asyncio as _aio
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
+
     from planner.bot.handlers import task_router
 
     monkeypatch.setattr(task_router, "_STT_TIMEOUT_S", 0.01)

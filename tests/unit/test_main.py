@@ -16,6 +16,7 @@ def _run_main_mocked():
     fake_settings.timezone = "Europe/Moscow"
     fake_dp = MagicMock()
     fake_dp.start_polling = AsyncMock()
+    fake_dp.workflow_data.get.return_value = None  # no stt → skip warmup task
     fake_server = MagicMock()
     fake_server.serve = AsyncMock()
     fake_scheduler = MagicMock()
