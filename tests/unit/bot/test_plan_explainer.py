@@ -103,3 +103,32 @@ def test_deadline_reachable_no_levers():
     )
     out = explain_plan(plan, {t: "Бриф"}, {p: "Андрей"}, deadline=date(2026, 6, 20))
     assert "Рычаги" not in out
+
+
+def test_overload_offers_levers():
+    """Spec §6: an overload is a soft signal that must offer levers."""
+    t, p = uuid4(), uuid4()
+    plan = PlanResult(
+        assignments=(_assignment(t, p, date(2026, 6, 8), date(2026, 6, 8)),),
+        risks=(
+            RiskFlag(kind="overload", message="≈2 раб. дн.", person_id=p, day=date(2026, 6, 8)),
+        ),
+    )
+    out = explain_plan(plan, {t: "Бриф"}, {p: "Андрей"})  # no deadline
+    assert "Рычаги" in out
+    assert "lite" in out
+    assert "/whatif" in out
+
+
+def test_overload_and_missed_deadline_offers_levers_once():
+    """Levers are a single soft-signal block, even when both triggers fire."""
+    t, p = uuid4(), uuid4()
+    plan = PlanResult(
+        assignments=(_assignment(t, p, date(2026, 6, 25), date(2026, 6, 25)),),
+        risks=(
+            RiskFlag(kind="overload", message="≈2 раб. дн.", person_id=p, day=date(2026, 6, 25)),
+        ),
+        end_date=date(2026, 6, 25),
+    )
+    out = explain_plan(plan, {t: "Бриф"}, {p: "Андрей"}, deadline=date(2026, 6, 20))
+    assert out.count("Рычаги") == 1

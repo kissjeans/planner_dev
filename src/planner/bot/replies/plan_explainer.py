@@ -14,6 +14,13 @@ from planner.domain.models import PlanDiff, PlanResult
 
 NameMap = dict[UUID, str]
 
+# Soft-signal levers offered on both overloads and missed deadlines (spec §6/§7).
+_LEVERS = (
+    "Рычаги: /whatif lite — сократить объём | "
+    "/whatif +человек — добавить исполнителя | "
+    "/whatif сдвинуть дедлайн — перенести срок"
+)
+
 
 def _fmt_day(d: date) -> str:
     return d.strftime("%d.%m")
@@ -57,16 +64,18 @@ def explain_plan(
             lines.append(f"  – {who}{day}: {r.message}")
 
     missed = [r for r in plan.risks if r.kind == "deadline_missed"]
+    deadline_missed = deadline is not None and (
+        bool(missed) or (plan.end_date is not None and plan.end_date > deadline)
+    )
     if deadline is not None:
-        if missed or (plan.end_date is not None and plan.end_date > deadline):
+        if deadline_missed:
             lines.append(f"❌ Дедлайн {_fmt_day(deadline)} недостижим.")
-            lines.append(
-                "Рычаги: /whatif lite — сократить объём | "
-                "/whatif +человек — добавить исполнителя | "
-                "/whatif сдвинуть дедлайн — перенести срок"
-            )
         else:
             lines.append(f"✅ Дедлайн {_fmt_day(deadline)} достижим.")
+
+    # Overloads and missed deadlines are soft signals; offer the levers once.
+    if overloads or deadline_missed:
+        lines.append(_LEVERS)
 
     if earliest_end is not None:
         lines.append(f"Самая ранняя дата завершения: {_fmt_day(earliest_end)}.")
