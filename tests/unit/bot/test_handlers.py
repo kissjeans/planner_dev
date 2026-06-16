@@ -169,12 +169,14 @@ async def test_whatif_non_whatif_intent_returns_message():
 
 
 @pytest.mark.asyncio
-async def test_whatif_non_admin_blocked():
+async def test_whatif_open_to_non_admin():
+    # spec section 16: what-if is read-only -> a non-admin may run it.
     intent = WhatIfIntent(operation="shift_deadline", project_title="Альфа")
     msg, answers = _message("/whatif сдвинуть Альфу")
     parser = _FakeParser(intent)
     await whatif.handle_whatif(msg, parser, {"is_admin": False})  # type: ignore[arg-type]
-    assert "Только админ" in answers.calls[0]
+    assert "Только админ" not in answers.calls[0]
+    assert "Альфа" in answers.calls[0]
 
 
 @pytest.mark.asyncio
