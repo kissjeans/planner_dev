@@ -39,10 +39,14 @@ class FakeRepo:
     async def get_project_template(self, code: str):
         return self._template if code == self._template.code else None
 
-    async def create_project(self, *, title, template_code, deadline, brief_return_date, actor_id):
-        rec = ProjectRecord(uuid4(), title, "planning", deadline)
+    async def create_project(self, *, title, template_code, deadline,
+                             brief_return_date, actor_id, project_id=None):
+        rec = ProjectRecord(project_id or uuid4(), title, "planning", deadline)
         self.projects[rec.id] = rec
         return rec
+
+    async def save_project_tasks(self, project_id, tasks, assignments):
+        self.saved_project_tasks = (project_id, tasks, assignments)
 
     async def save_plan_version(self, project_id, status, payload, actor_id):
         rec = PlanVersionRecord(uuid4(), project_id, status, payload)
