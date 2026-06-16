@@ -6,11 +6,12 @@ from datetime import date
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Form, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, Form, Request, Response, status
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 
+from planner.app.errors import user_message
 from planner.app.ports import PersonRecord, RepoPort
-from planner.app.set_vacation import SetVacationUseCase
+from planner.app.set_vacation import PersonNotFoundError, SetVacationUseCase
 from planner.domain.intent import VacationIntent
 from planner.web.deps import current_user, get_repo, require_admin
 
@@ -54,12 +55,15 @@ async def add_vacation(
     capacity_h: int = Form(0),
     user: dict[str, Any] = Depends(require_admin),
     repo: RepoPort = Depends(get_repo),
-) -> RedirectResponse:
+) -> Response:
     intent = VacationIntent(
         person_name=person_name,
         day_from=date.fromisoformat(day_from),
         day_to=date.fromisoformat(day_to),
         capacity_h=capacity_h,
     )
-    await SetVacationUseCase(repo).execute(intent, _actor(user))
+    try:
+        await SetVacationUseCase(repo).execute(intent, _actor(user))
+    except PersonNotFoundError as exc:
+        return PlainTextResponse(user_message(exc), status_code=404)
     return RedirectResponse("/team", status_code=status.HTTP_303_SEE_OTHER)

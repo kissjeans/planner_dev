@@ -302,6 +302,8 @@ def test_vacation_unknown_person_returns_404(client):
         follow_redirects=False,
     )
     assert r.status_code == 404
+    # Friendly copy, not a raw 500 / stack trace.
+    assert "Не нашёл такого человека" in r.text
 
 
 def _error_client(exc_type):
