@@ -51,9 +51,8 @@ def build_dispatcher(
     dp["explain_uc"] = ExplainPlanUseCase(None)
     if repo is not None:
         dp["confirm_uc"] = ConfirmPlanUseCase(repo)
-    if settings.openai_api_key:
-        from planner.infra.stt.whisper import WhisperSTT
-        dp["stt"] = WhisperSTT(settings.openai_api_key)
+    from planner.infra.stt.faster_whisper import FasterWhisperSTT
+    dp["stt"] = FasterWhisperSTT()
 
     errors_mw = ErrorBoundaryMiddleware()
     dp.message.middleware(errors_mw)

@@ -18,7 +18,6 @@ def _settings(**overrides) -> Settings:
         bot_token="123:TEST",
         team_chat_id=1,
         anthropic_api_key="",
-        openai_api_key="",
         jwt_secret="s",
         admin_ids="",
     )
@@ -86,20 +85,11 @@ def test_build_dispatcher_with_solver(mock_redis_storage):
     assert dp["solver"] is solver
 
 
-def test_build_dispatcher_openai_key_wires_stt(mock_redis_storage):
-    settings = _settings(openai_api_key="sk-openai-test")
-    parser = BasicIntentParser()
-    with patch("planner.infra.stt.whisper.WhisperSTT") as mock_stt:
-        mock_stt.return_value = MagicMock()
-        dp = build_dispatcher(settings, parser)
-    assert "stt" in dp.workflow_data
-
-
-def test_build_dispatcher_no_openai_no_stt(mock_redis_storage):
-    settings = _settings(openai_api_key="")
+def test_build_dispatcher_always_wires_stt(mock_redis_storage):
+    settings = _settings()
     parser = BasicIntentParser()
     dp = build_dispatcher(settings, parser)
-    assert "stt" not in dp.workflow_data
+    assert "stt" in dp.workflow_data
 
 
 @pytest.mark.asyncio
