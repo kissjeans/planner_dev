@@ -40,6 +40,7 @@ async def test_main_wires_and_runs():
     fake_engine.dispose = AsyncMock()
     fake_bot = MagicMock()
     fake_bot.session.close = AsyncMock()
+    fake_bot.set_my_commands = AsyncMock()
     with (
         patch.object(main_mod, "get_settings", return_value=fake_settings),
         patch.object(main_mod, "create_engine", return_value=fake_engine),
@@ -58,6 +59,7 @@ async def test_main_wires_and_runs():
     ):
         await main_mod.main()
 
+    assert fake_bot.set_my_commands.called
     assert fake_dp.start_polling.called
     assert fake_server.serve.called
     assert fake_scheduler.start.called
@@ -75,6 +77,7 @@ async def test_daily_summary_with_png():
     fake_bot.send_photo = AsyncMock()
     fake_bot.send_message = AsyncMock()
     fake_bot.session.close = AsyncMock()
+    fake_bot.set_my_commands = AsyncMock()
     fake_engine = MagicMock()
     fake_engine.dispose = AsyncMock()
 

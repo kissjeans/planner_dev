@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.redis import RedisStorage
+from aiogram.types import BotCommand
 
 from planner.app.confirm_plan import ConfirmPlanUseCase
 from planner.app.explain_plan import ExplainPlanUseCase
@@ -24,6 +25,26 @@ from planner.domain.solver.ports import SolverPort
 from planner.infra.llm.basic import BasicIntentParser
 from planner.infra.llm.ports import IntentParserPort
 from planner.settings import Settings
+
+
+# Telegram command menu (spec section 8). Kept in one place so /-handlers and
+# the menu can't drift apart.
+BOT_COMMANDS: tuple[tuple[str, str], ...] = (
+    ("start", "Привет и краткая справка"),
+    ("task", "Новая задача или проект"),
+    ("load", "Загрузка команды на 14 дней"),
+    ("whatif", "Сценарий «что-если» (без записи)"),
+    ("vacation", "Оформить отпуск / выходной"),
+    ("suggest", "Кто может взять задачу по скиллам"),
+    ("replan", "Пересчитать план по текущим данным"),
+)
+
+
+async def register_bot_commands(bot: Bot) -> None:
+    """Publish the slash-command menu to Telegram (spec section 8)."""
+    await bot.set_my_commands(
+        [BotCommand(command=cmd, description=desc) for cmd, desc in BOT_COMMANDS]
+    )
 
 
 def build_parser(settings: Settings) -> IntentParserPort:

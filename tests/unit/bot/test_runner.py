@@ -93,6 +93,25 @@ def test_build_dispatcher_always_wires_stt(mock_redis_storage):
 
 
 @pytest.mark.asyncio
+async def test_set_bot_commands_registers_menu():
+    """register_bot_commands sets the Telegram command menu (spec 8)."""
+    from unittest.mock import AsyncMock
+
+    from planner.bot.runner import register_bot_commands
+
+    bot = MagicMock()
+    bot.set_my_commands = AsyncMock()
+    await register_bot_commands(bot)
+
+    bot.set_my_commands.assert_awaited_once()
+    (commands,) = bot.set_my_commands.call_args.args
+    registered = {c.command for c in commands}
+    assert {
+        "start", "task", "load", "whatif", "vacation", "suggest", "replan"
+    } <= registered
+
+
+@pytest.mark.asyncio
 async def test_run_builds_bot_and_polls(mock_redis_storage):
     """runner.py:67-70 — run() creates Bot + Dispatcher and starts polling."""
     from unittest.mock import AsyncMock

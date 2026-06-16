@@ -15,7 +15,7 @@ from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from planner.bot.handlers.load import build_load_image
-from planner.bot.runner import build_dispatcher, build_parser
+from planner.bot.runner import build_dispatcher, build_parser, register_bot_commands
 from planner.domain.solver.greedy import GreedySolver
 from planner.infra.calendar.isdayoff import fetch_snapshot_for_years
 from planner.infra.calendar.snapshot import SnapshotCalendar
@@ -58,6 +58,7 @@ async def main() -> None:
     repo = SqlAlchemyRepo(session_factory)
 
     bot = Bot(token=settings.bot_token)
+    await register_bot_commands(bot)
     solver = GreedySolver(await _load_calendar())
     dp = build_dispatcher(settings, build_parser(settings), repo, solver)
     stt = dp.workflow_data.get("stt")
