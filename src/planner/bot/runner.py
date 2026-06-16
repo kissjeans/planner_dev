@@ -27,7 +27,6 @@ from planner.infra.llm.basic import BasicIntentParser
 from planner.infra.llm.ports import IntentParserPort
 from planner.settings import Settings
 
-
 # Telegram command menu (spec section 8). Kept in one place so /-handlers and
 # the menu can't drift apart.
 BOT_COMMANDS: tuple[tuple[str, str], ...] = (

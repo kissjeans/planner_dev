@@ -119,6 +119,6 @@ async def test_assign_substring_match_on_task_ref():
     # task_ref like "task: Дизайн in project Альфа" should still match by substring.
     intent = AssignIntent(task_ref="Дизайн обложки в проекте Альфа", person_name="Андрей")
 
-    reply = await build_assign_reply(intent, repo=repo, actor_id=uuid4())
+    await build_assign_reply(intent, repo=repo, actor_id=uuid4())
 
     assert repo.set_calls == [(task.task_id, andrey.id)]
