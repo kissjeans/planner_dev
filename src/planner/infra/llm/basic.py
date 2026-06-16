@@ -134,9 +134,10 @@ class BasicIntentParser:
         # Default: capture the message as a task (low-friction path). Only
         # truly empty input falls through to clarify.
         if low:
+            person = _resolve_person(text, ctx)
             return CaptureTaskIntent(
                 task_title=text.strip(),
-                assignee_name=_resolve_person(text, ctx),
+                assignee_names=[person] if person else [],
                 deadline=_parse_date(text, ctx.today),
             )
         return ClarifyIntent(

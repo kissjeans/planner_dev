@@ -114,7 +114,7 @@ async def build_capture_reply(
         "✓ Записал",
         f"  задача: {result.task_title}",
         f"  проект: {result.project_title}",
-        f"  кому: {result.assignee_name or '—'}",
+        f"  кому: {', '.join(result.assignee_names) or '—'}",
         f"  дедлайн: {result.deadline_iso or '—'}",
     ]
     return "\n".join(lines)
@@ -126,7 +126,7 @@ def describe_intent(intent: Intent) -> str:
         when = intent.deadline.isoformat() if intent.deadline else "обратный режим (КП)"
         return f"Проект «{intent.title}», шаблон {intent.template_code}, дедлайн: {when}."
     if isinstance(intent, CaptureTaskIntent):
-        who = intent.assignee_name or "не назначено"
+        who = ", ".join(intent.assignee_names) or "не назначено"
         return f"Задача: {intent.task_title} (кому: {who})."
     if isinstance(intent, LoadIntent):
         who = intent.person_name or "вся команда"

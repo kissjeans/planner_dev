@@ -168,7 +168,7 @@ def test_describe_intent_clarify_returns_question():
 
 def test_describe_intent_capture_task():
     out = describe_intent(
-        CaptureTaskIntent(task_title="сделать бриф", assignee_name="Андрей")
+        CaptureTaskIntent(task_title="сделать бриф", assignee_names=["Андрей"])
     )
     assert "сделать бриф" in out
     assert "Андрей" in out
@@ -184,7 +184,7 @@ async def test_handle_text_capture_writes_to_db():
     msg, answers = _message()
     repo = _FakeRepo()
     intent = CaptureTaskIntent(
-        task_title="подготовить бриф", project_name="МТС", assignee_name="Призрак"
+        task_title="подготовить бриф", project_name="МТС", assignee_names=["Призрак"]
     )
     actor_record = PersonRecord(id=uuid4(), name="Андрей", is_admin=True)
     await _handle_text(
