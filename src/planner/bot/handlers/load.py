@@ -23,18 +23,31 @@ router = Router(name="load")
 
 
 async def build_load_image(
-    repo: RepoPort, *, start: date, days: int = DEFAULT_DAYS
+    repo: RepoPort,
+    *,
+    start: date,
+    days: int = DEFAULT_DAYS,
+    person_name: str | None = None,
 ) -> bytes | None:
-    """Build the load heatmap PNG, or None when there is no team to render."""
-    people = await repo.get_solver_people()
+    """Build the load heatmap PNG, or None when there is no team to render.
+
+    When ``person_name`` names a known person the heatmap is narrowed to just
+    them; an unknown name falls back to the whole team (spec 8.1 /load <имя>).
+    """
+    people = list(await repo.get_solver_people())
     if not people:
         return None
+
+    if person_name:
+        matched = [p for p in people if p.name == person_name]
+        if matched:
+            people = matched
 
     allocations: list[DayAllocation] = []
     for payload in await repo.list_committed_plans():
         allocations.extend(deserialize_allocations(payload))
 
-    return LoadSummaryUseCase().execute(list(people), allocations, start, days)
+    return LoadSummaryUseCase().execute(people, allocations, start, days)
 
 
 @router.message(Command("load"))
@@ -43,13 +56,14 @@ async def handle_load(
 ) -> None:
     text = (message.text or "").partition(" ")[2].strip() or "load"
     intent = await parser.parse(text, ChatContext(today=date.today()))
-    who = getattr(intent, "person_name", None) or "вся команда"
+    person_name = getattr(intent, "person_name", None)
+    who = person_name or "вся команда"
 
     if repo is None:
         await message.answer(f"Загрузка ({who}): репозиторий не подключён.")
         return
 
-    png = await build_load_image(repo, start=date.today())
+    png = await build_load_image(repo, start=date.today(), person_name=person_name)
     if png is None:
         await message.answer("В команде нет активных людей — нечего показывать.")
         return
