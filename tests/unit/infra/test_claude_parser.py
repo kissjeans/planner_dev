@@ -195,3 +195,16 @@ async def test_explain_plan_falls_back_to_summary_on_error():
     )
     out = await p.explain_plan("сводка плана")
     assert out == "сводка плана"
+
+
+@pytest.mark.asyncio
+async def test_parse_uses_temperature_zero():
+    """Intent classification must be deterministic (temperature=0)."""
+    parser = _make_parser()
+    parser._client.messages.create = AsyncMock(
+        return_value=_json_resp('{"kind": "load", "person_name": null}')
+    )
+    ctx = ChatContext(today=date(2026, 6, 5))
+    await parser.parse("загрузка команды", ctx)
+    kwargs = parser._client.messages.create.call_args.kwargs
+    assert kwargs["temperature"] == 0

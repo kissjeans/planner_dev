@@ -27,6 +27,8 @@ _TIMEOUT_S = 10.0   # chat UX: past this, the regex fallback is better
 _MAX_RETRIES = 1
 _INTENT_ADAPTER: TypeAdapter[Intent] = TypeAdapter(Intent)
 
+_TEMPERATURE = 0  # deterministic classification — same command, same intent
+
 _JSON_INSTRUCTION = (
     "\n\nОтветь ТОЛЬКО одним JSON-объектом intent (с полем kind). "
     "Без markdown, без ```, без пояснений до или после."
@@ -69,6 +71,7 @@ class ClaudeIntentParser:
             resp = await self._client.messages.create(
                 model=_MODEL,
                 max_tokens=400,
+                temperature=_TEMPERATURE,
                 system=INTENT_SYSTEM_PROMPT + _JSON_INSTRUCTION,
                 messages=[{"role": "user", "content": build_user_message(text, ctx)}],
             )
