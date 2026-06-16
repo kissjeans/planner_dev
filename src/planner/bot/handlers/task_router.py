@@ -24,6 +24,11 @@ from planner.app.add_project import (
     deserialize_allocations,
 )
 from planner.app.capture_task import CaptureTaskUseCase
+from planner.app.confirm_plan import (
+    ConfirmPlanUseCase,
+    PlanNotFoundError,
+    PlanNotProposedError,
+)
 from planner.app.explain_plan import ExplainPlanUseCase
 from planner.app.ports import PersonRecord, RepoPort
 from planner.bot.states import PlanEditState
@@ -145,6 +150,36 @@ def describe_intent(intent: Intent) -> str:
     return intent.question or "Не понял команду."
 
 
+async def _confirm_latest(
+    message: Message,
+    intent: ConfirmIntent,
+    *,
+    confirm_uc: ConfirmPlanUseCase | None,
+    actor_record: PersonRecord | None,
+    last_pv_id: UUID | None,
+) -> bool:
+    """Commit the proposed plan a typed «ок» refers to (L4).
+
+    Mirrors the inline ✅ button (bot/handlers/confirm.py). The target is the
+    intent's explicit id, else the latest proposed plan carried in context.
+    Returns True when a commit was attempted (so callers can clear FSM state).
+    """
+    target = intent.plan_version_id or last_pv_id
+    if target is None:
+        await message.answer("Нет плана на подтверждение — сначала предложи план.")
+        return False
+    if confirm_uc is None or actor_record is None:
+        await message.answer("База данных не подключена.")
+        return False
+    try:
+        await confirm_uc.execute(target, actor_record)
+        await message.answer("План зафиксирован.")
+        return True
+    except (PlanNotFoundError, PlanNotProposedError):
+        await message.answer("План не найден или уже зафиксирован.")
+        return False
+
+
 async def _handle_text(
     message: Message,
     text: str,
@@ -155,6 +190,9 @@ async def _handle_text(
     solver: SolverPort | None = None,
     actor_record: PersonRecord | None = None,
     explain_uc: ExplainPlanUseCase | None = None,
+    confirm_uc: ConfirmPlanUseCase | None = None,
+    last_pv_id: UUID | None = None,
+    edit_state: FSMContext | None = None,
 ) -> UUID | None:
     # Known-sender gate (spec 16 + QA H1/H2): only resolved team members or
     # admins may have their messages parsed/acted on. This blocks strangers
@@ -185,6 +223,19 @@ async def _handle_text(
 
     if not can_execute(intent.kind, actor.get("is_admin", False)):
         await message.answer("Только админ может править план.")
+        return None
+
+    if isinstance(intent, ConfirmIntent):
+        if confirm_uc is None and repo is None:
+            await message.answer(describe_intent(intent))
+            return None
+        committed = await _confirm_latest(
+            message, intent,
+            confirm_uc=confirm_uc, actor_record=actor_record, last_pv_id=last_pv_id,
+        )
+        # A typed «ок» ends the edit loop (spec flow step 14): clear FSM state.
+        if committed and edit_state is not None:
+            await edit_state.clear()
         return None
 
     if isinstance(intent, CaptureTaskIntent):
@@ -228,6 +279,7 @@ async def handle_voice(
     solver: SolverPort | None = None,
     actor_record: PersonRecord | None = None,
     explain_uc: ExplainPlanUseCase | None = None,
+    confirm_uc: ConfirmPlanUseCase | None = None,
 ) -> None:
     if stt is None or message.voice is None or message.bot is None:
         await message.answer("Голосовые сообщения не поддерживаются — напиши текстом.")
@@ -264,6 +316,7 @@ async def handle_voice(
     await _handle_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
+        confirm_uc=confirm_uc,
     )
 
 
@@ -276,6 +329,7 @@ async def handle_task(
     solver: SolverPort | None = None,
     actor_record: PersonRecord | None = None,
     explain_uc: ExplainPlanUseCase | None = None,
+    confirm_uc: ConfirmPlanUseCase | None = None,
 ) -> None:
     text = (message.text or "").partition(" ")[2].strip()
     if not text:
@@ -284,6 +338,7 @@ async def handle_task(
     await _handle_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
+        confirm_uc=confirm_uc,
     )
 
 
@@ -297,41 +352,51 @@ async def handle_edit_text(
     solver: SolverPort | None = None,
     actor_record: PersonRecord | None = None,
     explain_uc: ExplainPlanUseCase | None = None,
+    confirm_uc: ConfirmPlanUseCase | None = None,
 ) -> None:
     """FSM edit loop (spec flow step 14 / scenario J).
 
     Receives the manager's free-text edit instruction after they clicked
     "правка" on a proposed plan. Re-runs the intent parser and proposes a
-    fresh plan. Stays in the edit state until the manager types «ок» (which
-    resolves to ConfirmIntent and is handled by the normal flow, then clears
-    state).
+    fresh plan. Edits ACCUMULATE: each fresh proposal re-arms the loop with the
+    new pending plan, so several sequential edits all apply. The loop stays
+    armed until the manager types «ок» (ConfirmIntent → commits and clears
+    state inside ``_handle_text``).
     """
     text = (message.text or "").strip()
     if not text:
         return
+    # Read the plan being edited *before* dispatching, so a typed «ок» can
+    # commit it and a fresh proposal can supersede it.
+    data = await state.get_data()
+    old_pv_id = _parse_pv_id(data.get("pending_pv_id"))
     new_pv_id = await _handle_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
+        confirm_uc=confirm_uc, last_pv_id=old_pv_id, edit_state=state,
     )
     # The edit produced a fresh proposal: retire the one it replaces so the
-    # project list does not accumulate near-duplicate planning rows.
+    # project list does not accumulate near-duplicate planning rows, then
+    # re-arm the loop on the new proposal so the next edit also applies.
     if new_pv_id is not None and repo is not None:
-        data = await state.get_data()
-        old_raw = data.get("pending_pv_id")
-        if old_raw:
-            try:
-                old_pv_id = UUID(str(old_raw))
-            except ValueError:
-                old_pv_id = None
-            if old_pv_id is not None and old_pv_id != new_pv_id:
-                old_pv = await repo.get_plan_version(old_pv_id)
-                superseded = await repo.transition_plan_status(
-                    old_pv_id, "proposed", "superseded"
-                )
-                if superseded and old_pv is not None:
-                    await repo.set_project_status(old_pv.project_id, "cancelled")
-    # Clear edit state so subsequent messages go through the normal handler.
-    await state.clear()
+        if old_pv_id is not None and old_pv_id != new_pv_id:
+            old_pv = await repo.get_plan_version(old_pv_id)
+            superseded = await repo.transition_plan_status(
+                old_pv_id, "proposed", "superseded"
+            )
+            if superseded and old_pv is not None:
+                await repo.set_project_status(old_pv.project_id, "cancelled")
+        await state.set_state(PlanEditState.waiting)
+        await state.update_data(pending_pv_id=str(new_pv_id))
+
+
+def _parse_pv_id(raw: object) -> UUID | None:
+    if not raw:
+        return None
+    try:
+        return UUID(str(raw))
+    except ValueError:
+        return None
 
 
 @router.message(F.text & ~F.text.startswith("/"))
@@ -343,6 +408,7 @@ async def handle_mention_or_dm(
     solver: SolverPort | None = None,
     actor_record: PersonRecord | None = None,
     explain_uc: ExplainPlanUseCase | None = None,
+    confirm_uc: ConfirmPlanUseCase | None = None,
 ) -> None:
     """Handle @mention in groups and direct messages in private chats (spec 8.1).
 
@@ -370,4 +436,5 @@ async def handle_mention_or_dm(
     await _handle_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
+        confirm_uc=confirm_uc,
     )

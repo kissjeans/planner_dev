@@ -6,7 +6,7 @@ from datetime import date
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -121,6 +121,37 @@ class _FakeRepo:
 
     async def save_project_tasks(self, project_id, tasks, assignments) -> None:
         self.saved_tasks.append((project_id, tasks, assignments))
+
+
+class _ConfirmRepo:
+    """Minimal RepoPort double for the typed-confirm path (L4)."""
+
+    def __init__(self) -> None:
+        from planner.app.ports import PlanVersionRecord
+        self.plan_versions: dict[Any, PlanVersionRecord] = {}
+        self.audits: list[tuple] = []
+
+    async def get_plan_version(self, pv_id):  # type: ignore[no-untyped-def]
+        return self.plan_versions.get(pv_id)
+
+    async def transition_plan_status(self, pv_id, from_status, to_status) -> bool:  # type: ignore[no-untyped-def]
+        from planner.app.ports import PlanVersionRecord
+        pv = self.plan_versions.get(pv_id)
+        if pv is None or pv.status != from_status:
+            return False
+        self.plan_versions[pv_id] = PlanVersionRecord(
+            pv.id, pv.project_id, to_status, pv.payload
+        )
+        return True
+
+    async def add_audit(self, *a) -> None:  # type: ignore[no-untyped-def]
+        self.audits.append(a)
+
+    async def list_people(self):  # type: ignore[no-untyped-def]
+        return []
+
+    async def list_projects(self):  # type: ignore[no-untyped-def]
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -537,18 +568,26 @@ async def test_handle_task_with_text_routes_intent():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_handle_edit_text_routes_and_clears_state():
+async def test_handle_edit_text_unparsed_keeps_loop_armed():
+    """M7: a non-proposal, non-confirm reply (clarify) inside the edit loop
+    must NOT clear the state — the manager can retry their edit."""
     from planner.bot.handlers.task_router import handle_edit_text
 
     intent = ClarifyIntent(question="Не понял.")
     msg, answers = _message("правка: lite")
     parser = _FakeParser(intent)
-    state = SimpleNamespace(clear=AsyncMock())
+    state = SimpleNamespace(
+        clear=AsyncMock(),
+        set_state=AsyncMock(),
+        update_data=AsyncMock(),
+        get_data=AsyncMock(return_value={}),
+    )
     await handle_edit_text(
         msg, state, parser, {"is_admin": True}  # type: ignore[arg-type]
     )
     assert answers.calls
-    assert state.clear.called
+    assert not state.clear.called  # loop stays armed
+    assert not state.set_state.called  # no fresh proposal to re-arm on
 
 
 @pytest.mark.asyncio
@@ -796,6 +835,8 @@ async def test_handle_edit_text_supersedes_old_proposal():
     msg, answers = _message("правка: новый план")
     state = SimpleNamespace(
         clear=AsyncMock(),
+        set_state=AsyncMock(),
+        update_data=AsyncMock(),
         get_data=AsyncMock(return_value={"pending_pv_id": str(old_pv.id)}),
     )
     await handle_edit_text(
@@ -804,4 +845,214 @@ async def test_handle_edit_text_supersedes_old_proposal():
     )
     assert repo.plan_versions[old_pv.id].status == "superseded"
     assert repo.projects[old_project_id].status == "cancelled"
+    # M7: a fresh proposal re-arms the edit loop (does NOT clear) so the
+    # manager can keep editing; state is cleared only on confirm / cancel.
+    assert not state.clear.called
+    assert state.set_state.called
+    # The new pending_pv_id must point at the freshly proposed plan.
+    new_pv_id = next(
+        pv.id for pv in repo.plan_versions.values() if pv.status == "proposed"
+    )
+    state.update_data.assert_awaited_with(pending_pv_id=str(new_pv_id))
+
+
+@pytest.mark.asyncio
+async def test_handle_edit_text_two_sequential_edits_both_apply():
+    """M7: edits ACCUMULATE — two sequential edits each produce a fresh proposal
+    and the loop stays armed in between (only confirm/cancel clears it)."""
+    from datetime import timedelta
+
+    from planner.app.add_project import ProjectTemplate, TemplateTaskSpec
+    from planner.app.ports import PersonRecord, PlanVersionRecord, ProjectRecord
+    from planner.bot.handlers.task_router import handle_edit_text
+    from planner.domain.calendar.rules import WeekendCalendar
+    from planner.domain.models import Person
+    from planner.domain.solver.greedy import GreedySolver
+    from tests.unit.app.conftest import FakeRepo
+
+    andrey = Person(id=uuid4(), name="Андрей", capacity_h=8)
+    repo = FakeRepo()
+    repo.solver_people = (andrey,)
+    repo.templates = {
+        "standard": ProjectTemplate(
+            code="standard", tasks=(TemplateTaskSpec(1, "Бриф", 8, (andrey.id,)),)
+        )
+    }
+    first_project_id = uuid4()
+    repo.projects[first_project_id] = ProjectRecord(
+        first_project_id, "Старый", "planning", None
+    )
+    first_pv = PlanVersionRecord(uuid4(), first_project_id, "proposed", {})
+    repo.plan_versions[first_pv.id] = first_pv
+
+    actor_record = PersonRecord(id=uuid4(), name="Менеджер", is_admin=True)
+    solver = GreedySolver(WeekendCalendar())
+
+    # FSM state backed by a simple dict so re-arm carries between edits.
+    fsm: dict[str, Any] = {"pending_pv_id": str(first_pv.id)}
+
+    class _State:
+        def __init__(self) -> None:
+            self.cleared = False
+
+        async def get_data(self) -> dict[str, Any]:
+            return dict(fsm)
+
+        async def update_data(self, **kw: Any) -> None:
+            fsm.update(kw)
+
+        async def set_state(self, _state: Any) -> None:
+            pass
+
+        async def clear(self) -> None:
+            self.cleared = True
+
+    state = _State()
+
+    intent_a = AddProjectIntent(
+        title="Правка A", template_code="standard",
+        deadline=date.today() + timedelta(days=30),
+    )
+    msg, _ = _message("правка A")
+    await handle_edit_text(
+        msg, state, _FakeParser(intent_a), {"is_admin": True},  # type: ignore[arg-type]
+        repo=repo, solver=solver, actor_record=actor_record,
+    )
+    assert repo.plan_versions[first_pv.id].status == "superseded"
+    second_pv_id = UUID(fsm["pending_pv_id"])
+    assert second_pv_id != first_pv.id
+    assert repo.plan_versions[second_pv_id].status == "proposed"
+    assert not state.cleared  # still armed
+
+    # Second edit: must supersede the second proposal and arm a third.
+    intent_b = AddProjectIntent(
+        title="Правка B", template_code="standard",
+        deadline=date.today() + timedelta(days=30),
+    )
+    msg2, _ = _message("правка B")
+    await handle_edit_text(
+        msg2, state, _FakeParser(intent_b), {"is_admin": True},  # type: ignore[arg-type]
+        repo=repo, solver=solver, actor_record=actor_record,
+    )
+    assert repo.plan_versions[second_pv_id].status == "superseded"
+    third_pv_id = UUID(fsm["pending_pv_id"])
+    assert third_pv_id not in (first_pv.id, second_pv_id)
+    assert repo.plan_versions[third_pv_id].status == "proposed"
+    assert not state.cleared
+
+
+# ---------------------------------------------------------------------------
+# L4: typed confirm commits the latest proposed plan via _handle_text
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_handle_text_confirm_commits_via_last_pv_id():
+    """A ConfirmIntent (no pv_id) commits the latest proposed plan from context."""
+    from planner.app.ports import PersonRecord, PlanVersionRecord
+
+    repo = _ConfirmRepo()
+    pv = PlanVersionRecord(uuid4(), uuid4(), "proposed", {})
+    repo.plan_versions[pv.id] = pv
+    from planner.app.confirm_plan import ConfirmPlanUseCase
+    confirm_uc = ConfirmPlanUseCase(repo)  # type: ignore[arg-type]
+    actor_record = PersonRecord(id=uuid4(), name="Менеджер", is_admin=True)
+
+    msg, answers = _message()
+    await _handle_text(
+        msg, "ок", _FakeParser(ConfirmIntent()), {"is_admin": True},  # type: ignore[arg-type]
+        repo=repo, actor_record=actor_record,  # type: ignore[arg-type]
+        confirm_uc=confirm_uc, last_pv_id=pv.id,
+    )
+    assert repo.plan_versions[pv.id].status == "committed"
+    assert "зафиксирован" in answers.calls[0].lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_text_confirm_uses_explicit_plan_version_id():
+    """ConfirmIntent.plan_version_id wins over context last_pv_id."""
+    from planner.app.confirm_plan import ConfirmPlanUseCase
+    from planner.app.ports import PersonRecord, PlanVersionRecord
+
+    repo = _ConfirmRepo()
+    pv = PlanVersionRecord(uuid4(), uuid4(), "proposed", {})
+    repo.plan_versions[pv.id] = pv
+    confirm_uc = ConfirmPlanUseCase(repo)  # type: ignore[arg-type]
+    actor_record = PersonRecord(id=uuid4(), name="Менеджер", is_admin=True)
+
+    msg, answers = _message()
+    await _handle_text(
+        msg, "ок", _FakeParser(ConfirmIntent(plan_version_id=pv.id)),  # type: ignore[arg-type]
+        {"is_admin": True}, repo=repo, actor_record=actor_record,  # type: ignore[arg-type]
+        confirm_uc=confirm_uc, last_pv_id=uuid4(),
+    )
+    assert repo.plan_versions[pv.id].status == "committed"
+
+
+@pytest.mark.asyncio
+async def test_handle_text_confirm_no_plan_replies_friendly():
+    """No explicit id and no context proposal → friendly 'нет плана' message."""
+    from planner.app.confirm_plan import ConfirmPlanUseCase
+    from planner.app.ports import PersonRecord
+
+    repo = _ConfirmRepo()
+    confirm_uc = ConfirmPlanUseCase(repo)  # type: ignore[arg-type]
+    actor_record = PersonRecord(id=uuid4(), name="Менеджер", is_admin=True)
+
+    msg, answers = _message()
+    await _handle_text(
+        msg, "ок", _FakeParser(ConfirmIntent()), {"is_admin": True},  # type: ignore[arg-type]
+        repo=repo, actor_record=actor_record,  # type: ignore[arg-type]
+        confirm_uc=confirm_uc, last_pv_id=None,
+    )
+    assert "нет плана" in answers.calls[0].lower()
+
+
+@pytest.mark.asyncio
+async def test_handle_text_confirm_not_proposed_replies_error():
+    """A stale / already-committed plan → 'не найден или уже зафиксирован'."""
+    from planner.app.confirm_plan import ConfirmPlanUseCase
+    from planner.app.ports import PersonRecord, PlanVersionRecord
+
+    repo = _ConfirmRepo()
+    pv = PlanVersionRecord(uuid4(), uuid4(), "committed", {})
+    repo.plan_versions[pv.id] = pv
+    confirm_uc = ConfirmPlanUseCase(repo)  # type: ignore[arg-type]
+    actor_record = PersonRecord(id=uuid4(), name="Менеджер", is_admin=True)
+
+    msg, answers = _message()
+    await _handle_text(
+        msg, "ок", _FakeParser(ConfirmIntent()), {"is_admin": True},  # type: ignore[arg-type]
+        repo=repo, actor_record=actor_record,  # type: ignore[arg-type]
+        confirm_uc=confirm_uc, last_pv_id=pv.id,
+    )
+    reply = answers.calls[0].lower()
+    assert "не найден" in reply or "зафиксирован" in reply
+
+
+@pytest.mark.asyncio
+async def test_handle_edit_text_confirm_clears_state():
+    """M7/L4: typing «ок» inside the edit loop commits and CLEARS the state."""
+    from planner.app.confirm_plan import ConfirmPlanUseCase
+    from planner.app.ports import PersonRecord, PlanVersionRecord
+    from planner.bot.handlers.task_router import handle_edit_text
+
+    repo = _ConfirmRepo()
+    pv = PlanVersionRecord(uuid4(), uuid4(), "proposed", {})
+    repo.plan_versions[pv.id] = pv
+    confirm_uc = ConfirmPlanUseCase(repo)  # type: ignore[arg-type]
+    actor_record = PersonRecord(id=uuid4(), name="Менеджер", is_admin=True)
+
+    msg, answers = _message("ок")
+    state = SimpleNamespace(
+        clear=AsyncMock(),
+        set_state=AsyncMock(),
+        update_data=AsyncMock(),
+        get_data=AsyncMock(return_value={"pending_pv_id": str(pv.id)}),
+    )
+    await handle_edit_text(
+        msg, state, _FakeParser(ConfirmIntent()), {"is_admin": True},  # type: ignore[arg-type]
+        repo=repo, actor_record=actor_record, confirm_uc=confirm_uc,  # type: ignore[arg-type]
+    )
+    assert repo.plan_versions[pv.id].status == "committed"
     assert state.clear.called
+    assert not state.set_state.called  # confirm does NOT re-arm
