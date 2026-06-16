@@ -88,7 +88,7 @@ async def test_transcribe_default_filename(mock_model_cls):
 
 @pytest.mark.asyncio
 async def test_transcribe_passes_initial_prompt(mock_model_cls):
-    from planner.infra.stt.faster_whisper import FasterWhisperSTT, _INITIAL_PROMPT
+    from planner.infra.stt.faster_whisper import _INITIAL_PROMPT, FasterWhisperSTT
 
     _cls, model = mock_model_cls
     stt = FasterWhisperSTT()

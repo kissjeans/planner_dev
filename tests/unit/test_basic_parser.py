@@ -221,9 +221,10 @@ async def test_imperative_still_captured_as_task():
 
 @pytest.mark.asyncio
 async def test_basic_capture_assignee_is_list():
+    from datetime import date
+
     from planner.infra.llm.basic import BasicIntentParser
     from planner.infra.llm.ports import ChatContext
-    from datetime import date
     ctx = ChatContext(today=date(2026, 6, 5), known_people=("Андрей",))
     out = await BasicIntentParser().parse("подготовить бриф, Андрей задача твоя", ctx)
     assert out.kind == "capture_task"
