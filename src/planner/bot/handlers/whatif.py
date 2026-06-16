@@ -33,22 +33,33 @@ async def _base_request(repo: RepoPort, solver: SolverPort) -> PlanRequest | Non
     if not people:
         return None
     payloads = await repo.list_committed_plans()
+    name_map = await repo.get_task_name_map()
     tasks: list[Task] = []
+    task_ids: set[UUID] = set()
     for payload in payloads:
         for a in payload.get("assignments", []):
+            tid = UUID(a["task_id"])
             hours = sum(al["hours"] for al in a.get("allocations", []))
             tasks.append(
                 Task(
-                    id=UUID(a["task_id"]),
-                    name="task",
+                    id=tid,
+                    name=name_map.get(tid, "task"),
                     duration_hours=max(hours, 1),
                     allowed_person_ids=(UUID(a["person_id"]),),
                 )
             )
+            task_ids.add(tid)
+    # Real dependency edges among the committed tasks (plan 022): the greedy
+    # solver must honour precedence, else base and modified plans are both wrong.
+    deps = tuple(
+        d
+        for d in await repo.list_task_dependencies()
+        if d.task_id in task_ids and d.depends_on_id in task_ids
+    )
     return PlanRequest(
         people=people,
         tasks=tuple(tasks),
-        dependencies=(),
+        dependencies=deps,
         horizon_start=date.today(),
     )
 

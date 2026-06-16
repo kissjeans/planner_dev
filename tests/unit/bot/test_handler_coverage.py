@@ -66,9 +66,10 @@ class _FakeParser:
 
 
 class _FakeRepo:
-    def __init__(self, people=(), plans=()) -> None:
+    def __init__(self, people=(), plans=(), deps=()) -> None:
         self._people = people
         self._plans = list(plans)
+        self._deps = list(deps)
         self.captured_tasks: list[str] = []
         self.assignments: list[tuple] = []
         self.saved_tasks: list[tuple] = []
@@ -78,6 +79,12 @@ class _FakeRepo:
 
     async def list_committed_plans(self) -> list:
         return self._plans
+
+    async def get_task_name_map(self):
+        return {}
+
+    async def list_task_dependencies(self):
+        return list(self._deps)
 
     async def get_project_template(self, code: str) -> None:
         return None
@@ -197,6 +204,28 @@ async def test_handle_text_capture_non_admin_blocked():
     )
     assert "Только админ" in answers.calls[0]
     assert repo.captured_tasks == []
+
+
+@pytest.mark.asyncio
+async def test_whatif_base_request_preserves_dependencies():
+    """plan 022: the reconstructed what-if baseline must keep real dependencies."""
+    from planner.bot.handlers.whatif import _base_request
+    from planner.domain.models import Dependency, Person
+
+    a_id, b_id, p_id = uuid4(), uuid4(), uuid4()
+    person = Person(id=p_id, name="P", capacity_h=8)
+    payload = {
+        "assignments": [
+            {"task_id": str(a_id), "person_id": str(p_id), "allocations": [{"hours": 8}]},
+            {"task_id": str(b_id), "person_id": str(p_id), "allocations": [{"hours": 8}]},
+        ]
+    }
+    dep = Dependency(task_id=b_id, depends_on_id=a_id, link_type="FS")
+    repo = _FakeRepo(people=(person,), plans=(payload,), deps=(dep,))
+    req = await _base_request(repo, solver=None)  # type: ignore[arg-type]
+    assert req is not None
+    assert len(req.tasks) == 2
+    assert req.dependencies == (dep,)
 
 
 @pytest.mark.asyncio

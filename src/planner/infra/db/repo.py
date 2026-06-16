@@ -29,6 +29,9 @@ from planner.domain.models import (
     Assignment as DomainAssignment,
 )
 from planner.domain.models import (
+    Dependency as DomainDependency,
+)
+from planner.domain.models import (
     Person as DomainPerson,
 )
 from planner.domain.models import (
@@ -48,6 +51,9 @@ from planner.infra.db.models import (
     TemplateDependency,
     TemplateTask,
     TemplateTaskAssignee,
+)
+from planner.infra.db.models import (
+    Dependency as DependencyModel,
 )
 
 _CAPTURE_DEFAULT_HOURS = 8
@@ -409,6 +415,18 @@ class SqlAlchemyRepo:
                 select(PlanVersion).where(PlanVersion.status == "committed")
             )
             return [pv.payload for pv in rows]
+
+    async def list_task_dependencies(self) -> list[DomainDependency]:
+        async with self._sf() as s:
+            rows = await s.scalars(select(DependencyModel))
+            return [
+                DomainDependency(
+                    task_id=r.task_id,
+                    depends_on_id=r.depends_on_id,
+                    link_type=r.link_type,
+                )
+                for r in rows
+            ]
 
     async def get_person_capabilities(self) -> tuple[CapabilityRecord, ...]:
         async with self._sf() as s:

@@ -40,9 +40,9 @@ and update your row when done.
 | 017 | Migrate python-jose → PyJWT | P3 | S | — | DONE (`3c19599`) |
 | 018 | Gate + validate `capture_task` (write-gate bypass) | P1 | S | — | DONE (2026-06-15; capture → admin-only per decision) |
 | 019 | Load board: drop round-before-ceil (true slot load) | P1 | S | — | DONE (2026-06-15) |
-| 020 | Board reassign: validate ids, single people query | P2 | S | — | DONE (2026-06-15; bad-id→400 regression test deferred) |
+| 020 | Board reassign: validate ids, single people query | P2 | S | — | DONE (2026-06-15; `test_reassign_non_uuid_returns_400` present & green) |
 | 021 | Graceful shutdown + scheduler job error handling | P2 | M | — | DONE (2026-06-15) |
-| 022 | `/whatif`: faithful baseline (real deps + durations) | P2 | M | — | TODO (NOT a STOP: deps ARE persisted in `Dependency` table, models.py:228, written by add_project.py:90-95. Fix = `list_task_dependencies` repo method + rewire `whatif._base_request`; needs ports.py+repo.py+DB test) |
+| 022 | `/whatif`: faithful baseline (real deps + durations) | P2 | M | — | DONE (2026-06-16; `list_task_dependencies` repo method + `_base_request` now threads real `Dependency` edges + task names) |
 | 023 | Capability coverage invariant stays in [0,1] | P2 | S | — | DONE (2026-06-15) |
 | 024 | Guard matplotlib figure leak (try/finally close) | P3 | S | — | DONE (2026-06-15) |
 | 025 | Seed: scope capability rebuild (no global wipe) | P3 | S–M | — | DONE (2026-06-15; idempotency integration test needs Docker — deferred) |

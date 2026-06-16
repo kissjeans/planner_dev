@@ -132,6 +132,10 @@ class RepoPort(Protocol):
         """Payloads of all committed plan versions (for the load heatmap)."""
         ...
 
+    async def list_task_dependencies(self) -> list[Any]:
+        """All concrete task dependency edges (what-if baseline reconstruction)."""
+        ...
+
     async def create_project(
         self,
         *,
