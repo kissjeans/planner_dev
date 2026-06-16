@@ -16,6 +16,10 @@ from planner.domain.calendar.ports import WorkingCalendar
 from planner.domain.calendar.rules import first_working_day, nth_working_day
 from planner.domain.models import Person, PlanRequest, Task
 
+# Backward mode (spec §7): with no deadline the presented earliest date is the
+# raw critical-path finish plus a safety buffer of this many working days.
+BACKWARD_BUFFER_WORKING_DAYS = 2
+
 
 def _duration_days(task: Task, people_by_id: dict[UUID, Person]) -> int:
     caps = [
@@ -52,3 +56,17 @@ def critical_path_end(
     if max_ef == 0:
         return first_working_day(calendar, start)
     return nth_working_day(calendar, start, max_ef)
+
+
+def presented_earliest_end(
+    req: PlanRequest, start: date, calendar: WorkingCalendar
+) -> date:
+    """Backward-mode date shown to the manager: raw finish + buffer (spec §7).
+
+    Reuses ``next_working_day`` so the buffer lands on real working days
+    (skipping weekends/holidays).
+    """
+    end = critical_path_end(req, start, calendar)
+    for _ in range(BACKWARD_BUFFER_WORKING_DAYS):
+        end = calendar.next_working_day(end)
+    return end

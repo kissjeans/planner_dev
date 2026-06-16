@@ -29,6 +29,9 @@ from planner.domain.models import (
     Task,
 )
 from planner.domain.solver.critical_path import critical_path_end as _critical_path_end
+from planner.domain.solver.critical_path import (
+    presented_earliest_end as _presented_earliest_end,
+)
 from planner.domain.solver.diff import diff as _diff
 
 # Planning horizon: how far ahead the greedy search is allowed to look.
@@ -247,6 +250,9 @@ class GreedySolver:
 
     def critical_path_end(self, req: PlanRequest, start: date) -> date:
         return _critical_path_end(req, start, self.calendar)
+
+    def presented_earliest_end(self, req: PlanRequest, start: date) -> date:
+        return _presented_earliest_end(req, start, self.calendar)
 
     def diff(self, base: PlanResult, modified: PlanResult) -> PlanDiff:
         return _diff(base, modified)

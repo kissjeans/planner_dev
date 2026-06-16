@@ -61,7 +61,7 @@ class AddProjectResult:
     plan_version_id: UUID
     plan: PlanResult
     tasks: tuple[Task, ...]  # instantiated tasks (for name maps / rendering)
-    earliest_end: date | None  # backward-mode critical-path end (None in forward mode)
+    earliest_end: date | None  # backward-mode critical-path end + buffer (None in forward mode)
 
 
 def instantiate_template(
@@ -232,7 +232,7 @@ class AddProjectUseCase:
         except nx.NetworkXUnfeasible as exc:
             raise InvalidProjectError("Цикл в зависимостях шаблона.") from exc
         earliest_end = (
-            self._solver.critical_path_end(req, today)
+            self._solver.presented_earliest_end(req, today)
             if intent.deadline is None
             else None
         )
