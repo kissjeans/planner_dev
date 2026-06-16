@@ -665,6 +665,7 @@ async def test_handle_text_populates_context_from_repo():
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
     from uuid import uuid4
+
     from planner.bot.handlers.task_router import _handle_text
     from planner.domain.intent import LoadIntent
 

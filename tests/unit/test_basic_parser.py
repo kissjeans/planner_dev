@@ -1,7 +1,8 @@
 """Unit tests for the regex fallback intent parser (spec section 15)."""
 
-import pytest
 from datetime import date
+
+import pytest
 
 from planner.infra.llm.basic import BasicIntentParser, _parse_date
 from planner.infra.llm.ports import ChatContext
@@ -186,9 +187,10 @@ def test_create_project_still_works():
 
 @pytest.mark.asyncio
 async def test_availability_question_is_load():
+    from datetime import date
+
     from planner.infra.llm.basic import BasicIntentParser
     from planner.infra.llm.ports import ChatContext
-    from datetime import date
     ctx = ChatContext(today=date(2026, 6, 5), known_people=("Рай",))
     out = await BasicIntentParser().parse("сколько слотов у Рая?", ctx)
     assert out.kind == "load"
@@ -196,9 +198,10 @@ async def test_availability_question_is_load():
 
 @pytest.mark.asyncio
 async def test_plain_question_not_captured_as_task():
+    from datetime import date
+
     from planner.infra.llm.basic import BasicIntentParser
     from planner.infra.llm.ports import ChatContext
-    from datetime import date
     ctx = ChatContext(today=date(2026, 6, 5))
     out = await BasicIntentParser().parse("ты изменила загрузку?", ctx)
     assert out.kind in ("load", "clarify")  # never a captured task
@@ -207,9 +210,10 @@ async def test_plain_question_not_captured_as_task():
 @pytest.mark.asyncio
 async def test_imperative_still_captured_as_task():
     """Regression: real task-like messages still capture."""
+    from datetime import date
+
     from planner.infra.llm.basic import BasicIntentParser
     from planner.infra.llm.ports import ChatContext
-    from datetime import date
     ctx = ChatContext(today=date(2026, 6, 5))
     out = await BasicIntentParser().parse("подготовить бриф по МТС", ctx)
     assert out.kind == "capture_task"
