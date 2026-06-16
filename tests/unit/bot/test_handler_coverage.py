@@ -110,6 +110,12 @@ class _FakeRepo:
     async def assign_task(self, task_id, person_id, hours):
         self.assignments.append((task_id, person_id, hours))
 
+    async def list_people(self):
+        return []
+
+    async def list_projects(self):
+        return []
+
     async def add_audit(self, *a):
         pass
 
@@ -652,6 +658,36 @@ async def test_handle_mention_only_botname_no_text_ignored():
 # ---------------------------------------------------------------------------
 # handle_edit_text — supersede old proposal on successful re-plan
 # ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_handle_text_populates_context_from_repo():
+    """_handle_text must pass known_people/known_projects to the parser."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    from uuid import uuid4
+
+    from planner.bot.handlers.task_router import _handle_text
+    from planner.domain.intent import LoadIntent
+
+    captured = {}
+
+    class _Parser:
+        async def parse(self, text, ctx):
+            captured["ctx"] = ctx
+            return LoadIntent(person_name=None)
+
+    repo = SimpleNamespace(
+        list_people=AsyncMock(return_value=[SimpleNamespace(id=uuid4(), name="Рай")]),
+        list_projects=AsyncMock(return_value=[SimpleNamespace(id=uuid4(), title="МТС")]),
+    )
+    msg = SimpleNamespace(answer=AsyncMock())
+    await _handle_text(
+        msg, "сколько слотов у Рая?", _Parser(), {"is_admin": True},
+        repo=repo, actor_record=SimpleNamespace(id=uuid4(), name="Андрей"),
+    )
+    assert "Рай" in captured["ctx"].known_people
+    assert "МТС" in captured["ctx"].known_projects
+
 
 @pytest.mark.asyncio
 async def test_handle_edit_text_supersedes_old_proposal():

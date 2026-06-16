@@ -195,3 +195,25 @@ async def test_explain_plan_falls_back_to_summary_on_error():
     )
     out = await p.explain_plan("сводка плана")
     assert out == "сводка плана"
+
+
+def test_intent_prompt_covers_availability_load():
+    """load must cover availability vocabulary and availability questions."""
+    p = INTENT_SYSTEM_PROMPT.lower()
+    for marker in ("слот", "свобод", "занят", "доступ"):
+        assert marker in p, f"prompt missing load marker: {marker}"
+    # availability questions must be steered to load, not clarify
+    assert "вопрос" in p and "load" in p
+
+
+@pytest.mark.asyncio
+async def test_parse_uses_temperature_zero():
+    """Intent classification must be deterministic (temperature=0)."""
+    parser = _make_parser()
+    parser._client.messages.create = AsyncMock(
+        return_value=_json_resp('{"kind": "load", "person_name": null}')
+    )
+    ctx = ChatContext(today=date(2026, 6, 5))
+    await parser.parse("загрузка команды", ctx)
+    kwargs = parser._client.messages.create.call_args.kwargs
+    assert kwargs["temperature"] == 0
