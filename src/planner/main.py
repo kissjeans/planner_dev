@@ -60,6 +60,9 @@ async def main() -> None:
     bot = Bot(token=settings.bot_token)
     solver = GreedySolver(await _load_calendar())
     dp = build_dispatcher(settings, build_parser(settings), repo, solver)
+    stt = dp.workflow_data.get("stt")
+    if stt is not None:
+        asyncio.create_task(stt.warmup())
 
     app = create_app(repo, settings)
     server = uvicorn.Server(

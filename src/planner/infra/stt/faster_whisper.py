@@ -51,6 +51,14 @@ class FasterWhisperSTT:
         )
         return "".join(segment.text for segment in segments).strip()
 
+    async def warmup(self) -> None:
+        """Pre-load the model so the first voice message isn't slow."""
+        try:
+            await asyncio.to_thread(self._load_model)
+            log.info("faster_whisper_warmed", model=self._model_size)
+        except Exception as exc:  # noqa: BLE001 — warmup is best-effort
+            log.warning("faster_whisper_warmup_failed", error=str(exc))
+
     async def transcribe(self, audio: bytes, filename: str = "voice.ogg") -> str | None:
         try:
             return await asyncio.to_thread(self._transcribe_sync, audio)

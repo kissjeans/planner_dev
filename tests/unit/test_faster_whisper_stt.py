@@ -96,3 +96,23 @@ async def test_transcribe_passes_initial_prompt(mock_model_cls):
     kwargs = model.transcribe.call_args.kwargs
     assert kwargs["initial_prompt"] == _INITIAL_PROMPT
     assert "Рай" in _INITIAL_PROMPT and "бриф" in _INITIAL_PROMPT
+
+
+@pytest.mark.asyncio
+async def test_warmup_loads_model(mock_model_cls):
+    from planner.infra.stt.faster_whisper import FasterWhisperSTT
+
+    cls, _model = mock_model_cls
+    stt = FasterWhisperSTT()
+    await stt.warmup()
+    cls.assert_called_once_with("small", device="cpu", compute_type="int8")
+
+
+@pytest.mark.asyncio
+async def test_warmup_swallows_errors(mock_model_cls):
+    """Warmup is best-effort — a load failure must not raise."""
+    cls, _model = mock_model_cls
+    cls.side_effect = RuntimeError("no model")
+    from planner.infra.stt.faster_whisper import FasterWhisperSTT
+
+    await FasterWhisperSTT().warmup()  # must not raise
