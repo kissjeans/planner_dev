@@ -92,3 +92,9 @@ class FakeRepo:
 
     async def save_project_tasks(self, project_id, tasks, assignments) -> None:
         self.saved_tasks.append((project_id, tasks, assignments))
+
+    async def list_people(self):
+        return []
+
+    async def list_projects(self):
+        return []

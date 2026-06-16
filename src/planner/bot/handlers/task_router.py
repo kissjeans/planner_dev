@@ -164,7 +164,16 @@ async def _handle_text(
             "Попроси администратора добавить тебя."
         )
         return None
-    ctx = ChatContext(today=date.today())
+    known_people: tuple[str, ...] = ()
+    known_projects: tuple[str, ...] = ()
+    if repo is not None:
+        known_people = tuple(p.name for p in await repo.list_people())
+        known_projects = tuple(pr.title for pr in await repo.list_projects())
+    ctx = ChatContext(
+        today=date.today(),
+        known_people=known_people,
+        known_projects=known_projects,
+    )
     intent = await parser.parse(text, ctx)
 
     if isinstance(intent, ClarifyIntent):
