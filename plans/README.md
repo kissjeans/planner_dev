@@ -45,7 +45,7 @@ and update your row when done.
 | 022 | `/whatif`: faithful baseline (real deps + durations) | P2 | M | — | DONE (2026-06-16; `list_task_dependencies` repo method + `_base_request` now threads real `Dependency` edges + task names) |
 | 023 | Capability coverage invariant stays in [0,1] | P2 | S | — | DONE (2026-06-15) |
 | 024 | Guard matplotlib figure leak (try/finally close) | P3 | S | — | DONE (2026-06-15) |
-| 025 | Seed: scope capability rebuild (no global wipe) | P3 | S–M | — | DONE (2026-06-15; idempotency integration test needs Docker — deferred) |
+| 025 | Seed: scope capability rebuild (no global wipe) | P3 | S–M | — | DONE (2026-06-16; idempotency integration test added & green — re-run stable + manual non-seed link survives) |
 
 **Executed 2026-06-11** by dispatched executors on worktree branch
 `advisor/batch-001-017` (worktree: `../planner_dev-advisor`, baseline
