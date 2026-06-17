@@ -43,6 +43,21 @@ def _text_value(prop_type: str, values: list[str]) -> dict[str, Any] | None:
     return None
 
 
+def _snap_to_options(meta: dict[str, Any], values: list[str]) -> list[str]:
+    """Snap each value to an existing select/multi_select option by token overlap
+    (e.g. 'Рай' -> 'Рай Таиров'). Keep the value as-is when no option matches
+    (Notion then creates a new option). First match wins on ambiguity."""
+    options = [o["name"] for o in meta.get(meta["type"], {}).get("options", [])]
+    snapped: list[str] = []
+    for value in values:
+        low = value.lower()
+        match = next(
+            (o for o in options if low in o.lower() or o.lower() in low), None
+        )
+        snapped.append(match or value)
+    return snapped
+
+
 def build_properties(schema: dict[str, Any], task: SinkTask) -> dict[str, Any]:
     props: dict[str, Any] = {}
 
@@ -62,7 +77,10 @@ def build_properties(schema: dict[str, Any], task: SinkTask) -> dict[str, Any]:
     if task.assignees:
         a = _find(schema, _ASSIGNEE_RE, ("multi_select", "select", "rich_text"))
         if a:
-            value = _text_value(schema[a]["type"], task.assignees)
+            names = task.assignees
+            if schema[a]["type"] in ("multi_select", "select"):
+                names = _snap_to_options(schema[a], names)
+            value = _text_value(schema[a]["type"], names)
             if value:
                 props[a] = value
 
@@ -70,7 +88,10 @@ def build_properties(schema: dict[str, Any], task: SinkTask) -> dict[str, Any]:
     if task.project:
         p = _find(schema, _PROJECT_RE, ("multi_select", "select", "rich_text"))
         if p:
-            value = _text_value(schema[p]["type"], [task.project])
+            values = [task.project]
+            if schema[p]["type"] in ("multi_select", "select"):
+                values = _snap_to_options(schema[p], values)
+            value = _text_value(schema[p]["type"], values)
             if value:
                 props[p] = value
 

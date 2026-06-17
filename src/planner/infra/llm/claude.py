@@ -24,7 +24,9 @@ log = structlog.get_logger(__name__)
 
 _MODEL = "claude-haiku-4-5-20251001"
 _TIMEOUT_S = 10.0   # chat UX: past this, the regex fallback is better
-_MAX_RETRIES = 1
+# Transient 429/5xx/529 (Overloaded) storms usually clear in a couple seconds;
+# the SDK retries these with backoff before we degrade to the regex parser.
+_MAX_RETRIES = 3
 _INTENT_ADAPTER: TypeAdapter[Intent] = TypeAdapter(Intent)
 
 _TEMPERATURE = 0  # deterministic classification — same command, same intent

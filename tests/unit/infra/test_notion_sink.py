@@ -68,6 +68,20 @@ def test_mapping_real_demo_schema_multiselect_date_status():
     assert props["Status"]["select"]["name"] == "Сделать"
 
 
+def test_mapping_snaps_assignee_to_existing_option():
+    """A short captured name snaps to the matching existing multi_select option."""
+    from planner.infra.notion.mapping import build_properties
+    schema = {
+        "Name": {"type": "title"},
+        "Assign_new": {"type": "multi_select", "multi_select": {"options": [
+            {"name": "Рай Таиров"}, {"name": "Андрей Буйнов"}]}},
+    }
+    props = build_properties(
+        schema, SinkTask(title="t", assignees=["Рай"], project=None, deadline=None)
+    )
+    assert [o["name"] for o in props["Assign_new"]["multi_select"]] == ["Рай Таиров"]
+
+
 @pytest.mark.asyncio
 async def test_notion_sink_creates_page(monkeypatch):
     from planner.infra.notion import client as mod

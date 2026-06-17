@@ -176,6 +176,8 @@ def test_settings_notion_defaults_empty(monkeypatch):
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
     monkeypatch.setenv("BOT_TOKEN", "t")
     monkeypatch.setenv("TEAM_CHAT_ID", "1")
+    monkeypatch.delenv("NOTION_TOKEN", raising=False)
+    monkeypatch.delenv("NOTION_DATABASE_ID", raising=False)
     s = Settings(_env_file=None)
     assert s.notion_token == ""
     assert s.notion_database_id == ""

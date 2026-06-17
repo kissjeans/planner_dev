@@ -183,7 +183,7 @@ async def test_client_constructed_with_timeout_and_retries(monkeypatch):
     from planner.infra.llm.claude import ClaudeIntentParser
     ClaudeIntentParser("key")
     assert captured["timeout"] == 10.0
-    assert captured["max_retries"] == 1
+    assert captured["max_retries"] == 3
 
 
 @pytest.mark.asyncio
