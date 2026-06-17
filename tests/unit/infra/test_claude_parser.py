@@ -237,3 +237,76 @@ def test_intent_prompt_covers_short_confirm():
     assert "подтвержд" in p
     for w in ("ок", "да"):
         assert w in p
+
+
+# ---------------------------------------------------------------------------
+# ClaudeIntentParser.parse_intents() — multi-intent (list) path
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_parse_intents_returns_multiple_from_array():
+    """A JSON array of two intents → a two-element list (compound message)."""
+    parser = _make_parser()
+    parser._client.messages.create = AsyncMock(
+        return_value=_json_resp(
+            '[{"kind": "load", "person_name": "Андрей"}, '
+            '{"kind": "capture_task", "task_title": "добрифовать МТС"}]'
+        )
+    )
+    ctx = ChatContext(today=date(2026, 6, 5))
+    out = await parser.parse_intents("загрузка Андрея и поставь задачу", ctx)
+    assert isinstance(out, list)
+    assert [i.kind for i in out] == ["load", "capture_task"]
+
+
+@pytest.mark.asyncio
+async def test_parse_intents_single_object_is_one_element():
+    """A bare single intent object → a one-element list (usual case)."""
+    parser = _make_parser()
+    parser._client.messages.create = AsyncMock(
+        return_value=_json_resp('[{"kind": "load", "person_name": null}]')
+    )
+    ctx = ChatContext(today=date(2026, 6, 5))
+    out = await parser.parse_intents("загрузка команды", ctx)
+    assert isinstance(out, list)
+    assert len(out) == 1
+    assert out[0].kind == "load"
+
+
+@pytest.mark.asyncio
+async def test_parse_intents_strips_code_fences():
+    parser = _make_parser()
+    parser._client.messages.create = AsyncMock(
+        return_value=_json_resp('```json\n[{"kind": "confirm"}]\n```')
+    )
+    ctx = ChatContext(today=date(2026, 6, 5))
+    out = await parser.parse_intents("ок", ctx)
+    assert [i.kind for i in out] == ["confirm"]
+
+
+@pytest.mark.asyncio
+async def test_parse_intents_falls_back_to_list_on_error():
+    """On any exception, degrade to BasicIntentParser.parse_intents (a list)."""
+    parser = _make_parser()
+    parser._client.messages.create = AsyncMock(side_effect=RuntimeError("API down"))
+    ctx = ChatContext(today=date(2026, 6, 5))
+    out = await parser.parse_intents("загрузка команды", ctx)
+    assert isinstance(out, list)
+    assert len(out) == 1
+    assert out[0].kind == "load"
+
+
+@pytest.mark.asyncio
+async def test_parse_intents_falls_back_on_invalid_json():
+    parser = _make_parser()
+    parser._client.messages.create = AsyncMock(return_value=_json_resp("not json"))
+    ctx = ChatContext(today=date(2026, 6, 5))
+    out = await parser.parse_intents("загрузка команды", ctx)
+    assert isinstance(out, list)
+    assert out[0].kind == "load"
+
+
+def test_intent_prompt_covers_multi_intent():
+    """Prompt must instruct the model that a message may carry several actions."""
+    p = INTENT_SYSTEM_PROMPT.lower()
+    assert "несколько" in p

@@ -78,6 +78,10 @@ class BasicIntentParser:
     async def parse(self, text: str, ctx: ChatContext) -> Intent:
         return self.parse_sync(text, ctx)
 
+    async def parse_intents(self, text: str, ctx: ChatContext) -> list[Intent]:
+        # Regex fallback stays single-action: always one element.
+        return [self.parse_sync(text, ctx)]
+
     def parse_sync(self, text: str, ctx: ChatContext) -> Intent:
         low = text.lower().lstrip("/").strip()
 

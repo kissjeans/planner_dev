@@ -229,3 +229,13 @@ async def test_basic_capture_assignee_is_list():
     out = await BasicIntentParser().parse("подготовить бриф, Андрей задача твоя", ctx)
     assert out.kind == "capture_task"
     assert out.assignee_names == ["Андрей"]
+
+
+@pytest.mark.asyncio
+async def test_parse_intents_returns_one_element_list():
+    """Regex fallback stays single-action: parse_intents wraps parse_sync."""
+    out = await P.parse_intents("/load Айгуль", CTX)
+    assert isinstance(out, list)
+    assert len(out) == 1
+    assert out[0].kind == "load"
+    assert out[0].person_name == "Айгуль"

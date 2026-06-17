@@ -28,11 +28,21 @@ _TIMEOUT_S = 10.0   # chat UX: past this, the regex fallback is better
 # the SDK retries these with backoff before we degrade to the regex parser.
 _MAX_RETRIES = 3
 _INTENT_ADAPTER: TypeAdapter[Intent] = TypeAdapter(Intent)
+_INTENT_LIST_ADAPTER: TypeAdapter[list[Intent]] = TypeAdapter(list[Intent])
 
 _TEMPERATURE = 0  # deterministic classification — same command, same intent
 
 _JSON_INSTRUCTION = (
     "\n\nОтветь ТОЛЬКО одним JSON-объектом intent (с полем kind). "
+    "Без markdown, без ```, без пояснений до или после."
+)
+
+_JSON_ARRAY_INSTRUCTION = (
+    "\n\nОтветь ТОЛЬКО JSON-массивом, по одному объекту на каждое отдельное "
+    'действие (обычно один). У КАЖДОГО объекта обязательно поле "kind" '
+    '(именно "kind", НЕ "intent"). Пример: '
+    '[{"kind":"load","person_name":"Андрей"},'
+    '{"kind":"capture_task","task_title":"добрифовать МТС","assignee_names":["Андрей"]}]. '
     "Без markdown, без ```, без пояснений до или после."
 )
 
@@ -82,6 +92,21 @@ class ClaudeIntentParser:
         except Exception as exc:  # noqa: BLE001 — degrade, never crash the bot
             log.warning("claude_intent_failed", error=str(exc))
             return await self._fallback.parse(text, ctx)
+
+    async def parse_intents(self, text: str, ctx: ChatContext) -> list[Intent]:
+        try:
+            resp = await self._client.messages.create(
+                model=_MODEL,
+                max_tokens=600,
+                temperature=_TEMPERATURE,
+                system=INTENT_SYSTEM_PROMPT + _JSON_ARRAY_INSTRUCTION,
+                messages=[{"role": "user", "content": build_user_message(text, ctx)}],
+            )
+            raw = _strip_fences(_extract_text(resp))
+            return _INTENT_LIST_ADAPTER.validate_json(raw)
+        except Exception as exc:  # noqa: BLE001 — degrade, never crash the bot
+            log.warning("claude_intents_failed", error=str(exc))
+            return await self._fallback.parse_intents(text, ctx)
 
     async def explain_plan(self, plan_summary: str) -> str:
         try:

@@ -105,3 +105,15 @@ def test_capture_task_carries_enrichment_fields():
     )
     assert i.est_hours == 12
     assert i.required_skills == ["дизайн"]
+
+
+def test_load_intent_coerces_dict_date_range():
+    """Claude emits date_range as a {from,to} object — coerce to the tuple."""
+    from datetime import date
+
+    from planner.domain.intent import LoadIntent
+
+    i = LoadIntent(date_range={"from": "2026-06-22", "to": "2026-06-28"})
+    assert i.date_range == (date(2026, 6, 22), date(2026, 6, 28))
+    assert LoadIntent(date_range=None).date_range is None
+    assert LoadIntent(date_range={"from": "2026-06-22"}).date_range is None

@@ -66,6 +66,22 @@ class _FakeParser:
     async def parse(self, text: str, ctx: Any) -> Any:
         return self._intent
 
+    async def parse_intents(self, text: str, ctx: Any) -> list[Any]:
+        return [self._intent]
+
+
+class _MultiParser:
+    """Parser double returning several intents for a compound message."""
+
+    def __init__(self, intents: list[Any]) -> None:
+        self._intents = intents
+
+    async def parse(self, text: str, ctx: Any) -> Any:
+        return self._intents[0]
+
+    async def parse_intents(self, text: str, ctx: Any) -> list[Any]:
+        return list(self._intents)
+
 
 class _FakeRepo:
     def __init__(self, people=(), plans=(), deps=()) -> None:
@@ -722,6 +738,9 @@ async def test_handle_voice_sends_ack():
             from planner.domain.intent import ClarifyIntent
             return ClarifyIntent(question="x")
 
+        async def parse_intents(self, text, ctx):
+            return [await self.parse(text, ctx)]
+
     stt = SimpleNamespace(transcribe=AsyncMock(return_value="загрузка"))
     await handle_voice(msg, _P(), {"is_admin": False}, stt=stt)  # type: ignore[arg-type]
     assert any("Распозна" in s for s in sent)
@@ -791,6 +810,9 @@ async def test_handle_text_populates_context_from_repo():
             captured["ctx"] = ctx
             return LoadIntent(person_name=None)
 
+        async def parse_intents(self, text, ctx):
+            return [await self.parse(text, ctx)]
+
     repo = SimpleNamespace(
         list_people=AsyncMock(return_value=[SimpleNamespace(id=uuid4(), name="Рай")]),
         list_projects=AsyncMock(return_value=[SimpleNamespace(id=uuid4(), title="МТС")]),
@@ -821,6 +843,9 @@ async def test_handle_text_passes_recent_messages_from_history():
             captured["ctx"] = ctx
             return ClarifyIntent(question="Не понял.")
 
+        async def parse_intents(self, text: str, ctx: Any) -> Any:
+            return [await self.parse(text, ctx)]
+
     history = ChatHistory()
     history.record(42, "поставь задачу на МТС")  # earlier turn in this chat
 
@@ -850,6 +875,9 @@ async def test_handle_text_without_history_passes_empty_recent():
         async def parse(self, text: str, ctx: Any) -> Any:
             captured["ctx"] = ctx
             return ClarifyIntent(question="Не понял.")
+
+        async def parse_intents(self, text: str, ctx: Any) -> Any:
+            return [await self.parse(text, ctx)]
 
     msg, _ = _message("привет")
     actor_record = PersonRecord(id=uuid4(), name="Андрей", is_admin=True)
@@ -1215,3 +1243,33 @@ async def test_handle_text_load_intent_renders_photo():
     )
     assert msg.answer_photo.called, "load query must render a photo, not echo text"
     assert not msg.answer.called
+
+
+@pytest.mark.asyncio
+async def test_handle_text_compound_runs_load_and_capture():
+    """A compound message ("какая загрузка у Андрея? Если свободно, поставь
+    задачу") yields TWO intents — the handler must execute BOTH: render the
+    load heatmap AND capture the task (spec multi-intent)."""
+    from planner.app.ports import PersonRecord
+
+    andrey = Person(id=uuid4(), name="Андрей", capacity_h=8)
+    repo = _FakeRepo(people=(andrey,), plans=[])
+    msg, answers = _message()
+    actor_record = PersonRecord(id=uuid4(), name="Менеджер", is_admin=True)
+    intents = [
+        LoadIntent(person_name="Андрей"),
+        CaptureTaskIntent(task_title="добрифовать МТС", assignee_names=["Андрей"]),
+    ]
+    await _handle_text(
+        msg,  # type: ignore[arg-type]
+        "какая загрузка у Андрея? Если свободно, поставь задачу добрифовать МТС",
+        _MultiParser(intents),  # type: ignore[arg-type]
+        {"is_admin": True},
+        repo=repo,  # type: ignore[arg-type]
+        actor_record=actor_record,
+    )
+    # Load ran → a heatmap photo was sent.
+    assert answers.photos, "load intent must render a photo"
+    # Capture ran → the task was written and confirmed.
+    assert repo.captured_tasks == ["добрифовать МТС"]
+    assert any("Записал" in c for c in answers.calls), "capture must confirm"

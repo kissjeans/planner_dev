@@ -11,7 +11,7 @@ from datetime import date
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class AddProjectIntent(BaseModel):
@@ -27,6 +27,16 @@ class LoadIntent(BaseModel):
     kind: Literal["load"] = "load"
     person_name: str | None = None  # None => whole team
     date_range: tuple[date, date] | None = None  # None => next 14 days
+
+    @field_validator("date_range", mode="before")
+    @classmethod
+    def _coerce_range(cls, v: object) -> object:
+        """Accept the LLM's {"from","to"} / {"start","end"} object form too."""
+        if isinstance(v, dict):
+            lo = v.get("from") or v.get("start")
+            hi = v.get("to") or v.get("end")
+            return (lo, hi) if lo and hi else None
+        return v
 
 
 class WhatIfIntent(BaseModel):

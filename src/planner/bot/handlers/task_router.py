@@ -267,53 +267,25 @@ async def _confirm_latest(
         return False
 
 
-async def _handle_text(
+async def _dispatch_intent(
     message: Message,
-    text: str,
-    parser: IntentParserPort,
+    intent: Intent,
     actor: dict[str, Any],
     *,
-    repo: RepoPort | None = None,
-    solver: SolverPort | None = None,
-    actor_record: PersonRecord | None = None,
-    explain_uc: ExplainPlanUseCase | None = None,
-    confirm_uc: ConfirmPlanUseCase | None = None,
-    last_pv_id: UUID | None = None,
-    edit_state: FSMContext | None = None,
-    task_sink: TaskSinkPort | None = None,
-    history: ChatHistory | None = None,
+    repo: RepoPort | None,
+    solver: SolverPort | None,
+    actor_record: PersonRecord | None,
+    explain_uc: ExplainPlanUseCase | None,
+    confirm_uc: ConfirmPlanUseCase | None,
+    last_pv_id: UUID | None,
+    edit_state: FSMContext | None,
+    task_sink: TaskSinkPort | None,
 ) -> UUID | None:
-    # Known-sender gate (spec 16 + QA H1/H2): only resolved team members or
-    # admins may have their messages parsed/acted on. This blocks strangers
-    # from writing to the DB and from spending the LLM budget. When repo is
-    # None we are in degraded/echo mode (no DB) — skip the gate so the bot can
-    # still interpret messages offline.
-    if repo is not None and actor_record is None and not actor.get("is_admin", False):
-        await message.answer(
-            "Не узнал тебя — я отвечаю только участникам команды. "
-            "Попроси администратора добавить тебя."
-        )
-        return None
-    known_people: tuple[str, ...] = ()
-    known_projects: tuple[str, ...] = ()
-    if repo is not None:
-        known_people = tuple(p.name for p in await repo.list_people())
-        known_projects = tuple(pr.title for pr in await repo.list_projects())
-    # Short-term per-chat history lets the parser resolve follow-up references
-    # («тогда ставь на Андрея», «на него»). Capture recent BEFORE recording the
-    # current message so it is not part of its own context.
-    recent: tuple[str, ...] = ()
-    if history is not None and message.chat is not None:
-        recent = history.recent(message.chat.id)
-        history.record(message.chat.id, text)
-    ctx = ChatContext(
-        today=date.today(),
-        known_people=known_people,
-        known_projects=known_projects,
-        recent_messages=recent,
-    )
-    intent = await parser.parse(text, ctx)
+    """Execute a single parsed intent (the isinstance dispatch chain).
 
+    Returns the proposed plan-version id for an AddProject proposal (so the
+    caller can persist it for a later typed «ок»), else None.
+    """
     if isinstance(intent, ClarifyIntent):
         await message.answer(describe_intent(intent))
         return None
@@ -404,6 +376,82 @@ async def _handle_text(
 
     await message.answer(describe_intent(intent))
     return None
+
+
+def _intents_to_dispatch(intents: list[Intent]) -> list[Intent]:
+    """Pick which intents to execute for a (possibly compound) message.
+
+    A compound message may carry a ClarifyIntent alongside real actions when the
+    parser is unsure about part of it. Prefer the real actions: skip a lone
+    clarify when other intents exist. If ALL are clarify, answer the (first)
+    clarify so the user still gets a prompt.
+    """
+    real: list[Intent] = [i for i in intents if not isinstance(i, ClarifyIntent)]
+    if real:
+        return real
+    return intents[:1]
+
+
+async def _handle_text(
+    message: Message,
+    text: str,
+    parser: IntentParserPort,
+    actor: dict[str, Any],
+    *,
+    repo: RepoPort | None = None,
+    solver: SolverPort | None = None,
+    actor_record: PersonRecord | None = None,
+    explain_uc: ExplainPlanUseCase | None = None,
+    confirm_uc: ConfirmPlanUseCase | None = None,
+    last_pv_id: UUID | None = None,
+    edit_state: FSMContext | None = None,
+    task_sink: TaskSinkPort | None = None,
+    history: ChatHistory | None = None,
+) -> UUID | None:
+    # Known-sender gate (spec 16 + QA H1/H2): only resolved team members or
+    # admins may have their messages parsed/acted on. This blocks strangers
+    # from writing to the DB and from spending the LLM budget. When repo is
+    # None we are in degraded/echo mode (no DB) — skip the gate so the bot can
+    # still interpret messages offline.
+    if repo is not None and actor_record is None and not actor.get("is_admin", False):
+        await message.answer(
+            "Не узнал тебя — я отвечаю только участникам команды. "
+            "Попроси администратора добавить тебя."
+        )
+        return None
+    known_people: tuple[str, ...] = ()
+    known_projects: tuple[str, ...] = ()
+    if repo is not None:
+        known_people = tuple(p.name for p in await repo.list_people())
+        known_projects = tuple(pr.title for pr in await repo.list_projects())
+    # Short-term per-chat history lets the parser resolve follow-up references
+    # («тогда ставь на Андрея», «на него»). Capture recent BEFORE recording the
+    # current message so it is not part of its own context.
+    recent: tuple[str, ...] = ()
+    if history is not None and message.chat is not None:
+        recent = history.recent(message.chat.id)
+        history.record(message.chat.id, text)
+    ctx = ChatContext(
+        today=date.today(),
+        known_people=known_people,
+        known_projects=known_projects,
+        recent_messages=recent,
+    )
+    # A compound message ("какая загрузка у Андрея? Если свободно, поставь
+    # задачу") carries several actions — dispatch EACH in order. Single-action
+    # messages yield a one-element list, so the loop runs once unchanged.
+    intents = await parser.parse_intents(text, ctx)
+    last_pv: UUID | None = None
+    for intent in _intents_to_dispatch(intents):
+        pv_id = await _dispatch_intent(
+            message, intent, actor,
+            repo=repo, solver=solver, actor_record=actor_record,
+            explain_uc=explain_uc, confirm_uc=confirm_uc, last_pv_id=last_pv_id,
+            edit_state=edit_state, task_sink=task_sink,
+        )
+        if pv_id is not None:
+            last_pv = pv_id
+    return last_pv
 
 
 @router.message(F.voice)

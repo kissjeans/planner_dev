@@ -22,3 +22,12 @@ class ChatContext:
 
 class IntentParserPort(Protocol):
     async def parse(self, text: str, ctx: ChatContext) -> Intent: ...
+
+    async def parse_intents(self, text: str, ctx: ChatContext) -> list[Intent]:
+        """Parse a message into one or more intents (compound messages).
+
+        A single-action message yields a one-element list; a message carrying
+        several distinct actions (e.g. «покажи загрузку И поставь задачу»)
+        yields one intent per action.
+        """
+        ...
