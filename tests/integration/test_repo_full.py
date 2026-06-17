@@ -282,6 +282,73 @@ async def test_create_task_inserts_row(repo, project, db_session_factory):
 
 
 @pytest.mark.asyncio
+async def test_create_task_persists_required_skills(
+    repo, project, db_session_factory
+):
+    """Chat-captured tasks persist their LLM-inferred required skills (spec 3)."""
+    rec = await repo.create_task(
+        project_id=project, name="Дизайн макета",
+        duration_hours=12, deadline=None, actor_id=None,
+        required_skills=["дизайн"],
+    )
+    async with db_session_factory() as s:
+        rows = list(
+            await s.execute(
+                text("SELECT required_skills FROM tasks WHERE id = :id"),
+                {"id": rec.id},
+            )
+        )
+    assert rows[0][0] == ["дизайн"]
+    async with db_session_factory() as s, s.begin():
+        await s.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": rec.id})
+
+
+@pytest.mark.asyncio
+async def test_create_task_defaults_required_skills_to_empty(
+    repo, project, db_session_factory
+):
+    rec = await repo.create_task(
+        project_id=project, name="Без скиллов",
+        duration_hours=8, deadline=None, actor_id=None,
+    )
+    async with db_session_factory() as s:
+        rows = list(
+            await s.execute(
+                text("SELECT required_skills FROM tasks WHERE id = :id"),
+                {"id": rec.id},
+            )
+        )
+    assert rows[0][0] == []
+    async with db_session_factory() as s, s.begin():
+        await s.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": rec.id})
+
+
+@pytest.mark.asyncio
+async def test_save_project_tasks_persists_required_skills(
+    repo, project, db_session_factory
+):
+    from planner.domain.models import Task as DomainTask
+
+    tid = uuid4()
+    task = DomainTask(
+        id=tid, name="Скилловая задача", duration_hours=8,
+        allowed_person_ids=(), project_id=project,
+        required_skills=("дизайн", "аналитика"),
+    )
+    await repo.save_project_tasks(project, (task,), ())
+    async with db_session_factory() as s:
+        rows = list(
+            await s.execute(
+                text("SELECT required_skills FROM tasks WHERE id = :id"),
+                {"id": tid},
+            )
+        )
+    assert rows[0][0] == ["дизайн", "аналитика"]
+    async with db_session_factory() as s, s.begin():
+        await s.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": tid})
+
+
+@pytest.mark.asyncio
 async def test_save_project_tasks_tags_source_template(
     repo, project, db_session_factory
 ):

@@ -120,6 +120,7 @@ class RepoPort(Protocol):
         duration_hours: int,
         deadline: date | None,
         actor_id: UUID | None,
+        required_skills: list[str] | None = None,
     ) -> TaskRecord:
         """Insert a standalone task (chat capture) and return it."""
         ...

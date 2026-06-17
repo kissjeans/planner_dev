@@ -194,6 +194,7 @@ class SqlAlchemyRepo:
         duration_hours: int,
         deadline: date | None,
         actor_id: UUID | None,
+        required_skills: list[str] | None = None,
     ) -> TaskRecord:
         task_id = uuid4()
         async with self._sf() as s, s.begin():
@@ -206,6 +207,7 @@ class SqlAlchemyRepo:
                     end_date=deadline,
                     status="not_done",
                     source="bot_formed",
+                    required_skills=list(required_skills or []),
                 )
             )
         return TaskRecord(
@@ -555,6 +557,7 @@ class SqlAlchemyRepo:
                         end_date=a.end_date if a else None,
                         status="not_done",
                         source=t.source,
+                        required_skills=list(t.required_skills),
                     )
                 )
                 if a is not None:

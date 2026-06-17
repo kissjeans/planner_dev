@@ -48,19 +48,21 @@ class CaptureTaskUseCase:
         self, intent: CaptureTaskIntent, actor: PersonRecord | None
     ) -> CaptureResult:
         project = await self._resolve_project(intent.project_name, actor)
+        duration = intent.est_hours if intent.est_hours is not None else _CAPTURE_HOURS
         task = await self._repo.create_task(
             project_id=project.id,
             name=intent.task_title,
-            duration_hours=_CAPTURE_HOURS,
+            duration_hours=duration,
             deadline=intent.deadline,
             actor_id=actor.id if actor else None,
+            required_skills=list(intent.required_skills),
         )
 
         assignee_names: list[str] = []
         for name in intent.assignee_names:
             person = await self._repo.get_person_by_name(name)
             if person is not None:
-                await self._repo.assign_task(task.id, person.id, _CAPTURE_HOURS)
+                await self._repo.assign_task(task.id, person.id, duration)
                 assignee_names.append(person.name)
 
         await self._repo.add_audit(

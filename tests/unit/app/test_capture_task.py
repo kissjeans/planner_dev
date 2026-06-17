@@ -33,9 +33,13 @@ class _FakeRepo:
         return rec
 
     async def create_task(self, *, project_id, name, duration_hours,
-                          deadline, actor_id) -> TaskRecord:
+                          deadline, actor_id, required_skills=None) -> TaskRecord:
         self.created_tasks.append(
-            {"project_id": project_id, "name": name, "deadline": deadline}
+            {
+                "project_id": project_id, "name": name, "deadline": deadline,
+                "duration_hours": duration_hours,
+                "required_skills": required_skills,
+            }
         )
         return TaskRecord(id=uuid4(), name=name, status="not_done",
                           end_date=deadline, duration_hours=duration_hours)
@@ -111,6 +115,39 @@ async def test_capture_skips_assignment_when_person_unknown():
 
     assert result.assignee_names == []
     assert repo.assignments == []
+
+
+@pytest.mark.asyncio
+async def test_capture_uses_est_hours_for_duration():
+    repo = _FakeRepo()
+    uc = CaptureTaskUseCase(repo)  # type: ignore[arg-type]
+
+    intent = CaptureTaskIntent(task_title="макет", est_hours=12)
+    await uc.execute(intent, _ACTOR)
+
+    assert repo.created_tasks[0]["duration_hours"] == 12
+
+
+@pytest.mark.asyncio
+async def test_capture_falls_back_to_default_hours_when_est_none():
+    repo = _FakeRepo()
+    uc = CaptureTaskUseCase(repo)  # type: ignore[arg-type]
+
+    intent = CaptureTaskIntent(task_title="макет", est_hours=None)
+    await uc.execute(intent, _ACTOR)
+
+    assert repo.created_tasks[0]["duration_hours"] == 8
+
+
+@pytest.mark.asyncio
+async def test_capture_forwards_required_skills():
+    repo = _FakeRepo()
+    uc = CaptureTaskUseCase(repo)  # type: ignore[arg-type]
+
+    intent = CaptureTaskIntent(task_title="макет", required_skills=["дизайн"])
+    await uc.execute(intent, _ACTOR)
+
+    assert repo.created_tasks[0]["required_skills"] == ["дизайн"]
 
 
 @pytest.mark.asyncio
