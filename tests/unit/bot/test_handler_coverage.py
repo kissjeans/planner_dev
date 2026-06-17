@@ -990,6 +990,77 @@ async def test_handle_text_confirm_uses_explicit_plan_version_id():
 
 
 @pytest.mark.asyncio
+async def test_handle_text_propose_via_task_then_typed_ok_commits():
+    """Bug: typed «ок» after a normal /task proposal must commit.
+
+    The normal path persists the proposed pv_id into FSM context; a later
+    ConfirmIntent (no explicit id, no last_pv_id) reads pending_pv_id from FSM
+    and commits — not just inside the edit loop.
+    """
+    from datetime import timedelta
+
+    from planner.app.add_project import ProjectTemplate, TemplateTaskSpec
+    from planner.app.confirm_plan import ConfirmPlanUseCase
+    from planner.app.ports import PersonRecord
+    from planner.domain.solver.greedy import GreedySolver
+    from tests.unit.app.conftest import FakeRepo
+
+    andrey = Person(id=uuid4(), name="Андрей", capacity_h=8)
+    repo = FakeRepo()
+    repo.solver_people = (andrey,)
+    repo.templates = {
+        "standard": ProjectTemplate(
+            code="standard", tasks=(TemplateTaskSpec(1, "Бриф", 8, (andrey.id,)),)
+        )
+    }
+    solver = GreedySolver(WeekendCalendar())
+    confirm_uc = ConfirmPlanUseCase(repo)  # type: ignore[arg-type]
+    actor_record = PersonRecord(id=uuid4(), name="Менеджер", is_admin=True)
+
+    # FSM state backed by a dict so the proposal's pv_id survives to the «ок».
+    fsm: dict[str, Any] = {}
+
+    class _State:
+        async def get_data(self) -> dict[str, Any]:
+            return dict(fsm)
+
+        async def update_data(self, **kw: Any) -> None:
+            fsm.update(kw)
+
+        async def set_state(self, _state: Any) -> None:
+            pass
+
+        async def clear(self) -> None:
+            fsm.clear()
+
+    state = _State()
+
+    # 1) Propose a plan via the normal /task path.
+    add_intent = AddProjectIntent(
+        title="Тест", template_code="standard",
+        deadline=date.today() + timedelta(days=30),
+    )
+    msg, _ = _message()
+    pv_id = await _handle_text(
+        msg, "Тест", _FakeParser(add_intent), {"is_admin": True},  # type: ignore[arg-type]
+        repo=repo, solver=solver, actor_record=actor_record,
+        confirm_uc=confirm_uc, edit_state=state,
+    )
+    assert pv_id is not None
+    assert fsm.get("pending_pv_id") == str(pv_id)  # persisted for typed «ок»
+
+    # 2) Type «ок» — no explicit id, no last_pv_id; must read FSM and commit.
+    msg2, answers2 = _message()
+    await _handle_text(
+        msg2, "ок", _FakeParser(ConfirmIntent()), {"is_admin": True},  # type: ignore[arg-type]
+        repo=repo, actor_record=actor_record,
+        confirm_uc=confirm_uc, edit_state=state,
+    )
+    assert repo.plan_versions[pv_id].status == "committed"
+    assert "зафиксирован" in answers2.calls[0].lower()
+
+
+@pytest.mark.asyncio
 async def test_handle_text_confirm_no_plan_replies_friendly():
     """No explicit id and no context proposal → friendly 'нет плана' message."""
     from planner.app.confirm_plan import ConfirmPlanUseCase

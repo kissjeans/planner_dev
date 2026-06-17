@@ -310,9 +310,15 @@ async def _handle_text(
         if confirm_uc is None and repo is None:
             await message.answer(describe_intent(intent))
             return None
+        # A typed «ок» after a normal /task proposal (not the edit loop) resolves
+        # the pending plan from FSM context, not just from the passed last_pv_id.
+        target_pv_id = last_pv_id
+        if target_pv_id is None and edit_state is not None:
+            data = await edit_state.get_data()
+            target_pv_id = _parse_pv_id(data.get("pending_pv_id"))
         committed = await _confirm_latest(
             message, intent,
-            confirm_uc=confirm_uc, actor_record=actor_record, last_pv_id=last_pv_id,
+            confirm_uc=confirm_uc, actor_record=actor_record, last_pv_id=target_pv_id,
         )
         # A typed «ок» ends the edit loop (spec flow step 14): clear FSM state.
         if committed and edit_state is not None:
@@ -358,6 +364,10 @@ async def _handle_text(
         )
         kb = _plan_keyboard(pv_id) if pv_id is not None else None
         await message.answer(reply_text, reply_markup=kb)
+        # Persist the proposal so a later typed «ок» can confirm it even outside
+        # the edit loop (the inline ✅ button carries the id in its callback).
+        if pv_id is not None and edit_state is not None:
+            await edit_state.update_data(pending_pv_id=str(pv_id))
         return pv_id
 
     await message.answer(describe_intent(intent))
@@ -376,6 +386,7 @@ async def handle_voice(
     explain_uc: ExplainPlanUseCase | None = None,
     confirm_uc: ConfirmPlanUseCase | None = None,
     task_sink: TaskSinkPort | None = None,
+    state: FSMContext | None = None,
 ) -> None:
     if stt is None or message.voice is None or message.bot is None:
         await message.answer("Голосовые сообщения не поддерживаются — напиши текстом.")
@@ -412,7 +423,7 @@ async def handle_voice(
     await _handle_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
-        confirm_uc=confirm_uc, task_sink=task_sink,
+        confirm_uc=confirm_uc, edit_state=state, task_sink=task_sink,
     )
 
 
@@ -427,6 +438,7 @@ async def handle_task(
     explain_uc: ExplainPlanUseCase | None = None,
     confirm_uc: ConfirmPlanUseCase | None = None,
     task_sink: TaskSinkPort | None = None,
+    state: FSMContext | None = None,
 ) -> None:
     text = (message.text or "").partition(" ")[2].strip()
     if not text:
@@ -435,7 +447,7 @@ async def handle_task(
     await _handle_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
-        confirm_uc=confirm_uc, task_sink=task_sink,
+        confirm_uc=confirm_uc, edit_state=state, task_sink=task_sink,
     )
 
 
@@ -509,6 +521,7 @@ async def handle_mention_or_dm(
     explain_uc: ExplainPlanUseCase | None = None,
     confirm_uc: ConfirmPlanUseCase | None = None,
     task_sink: TaskSinkPort | None = None,
+    state: FSMContext | None = None,
 ) -> None:
     """Handle @mention in groups and direct messages in private chats (spec 8.1).
 
@@ -536,5 +549,5 @@ async def handle_mention_or_dm(
     await _handle_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
-        confirm_uc=confirm_uc, task_sink=task_sink,
+        confirm_uc=confirm_uc, edit_state=state, task_sink=task_sink,
     )
