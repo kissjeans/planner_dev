@@ -140,6 +140,19 @@ async def test_capture_falls_back_to_default_hours_when_est_none():
 
 
 @pytest.mark.asyncio
+async def test_capture_clamps_nonpositive_est_hours_to_default():
+    # A hallucinated est_hours=0 (or negative) would create a 0-hour task that
+    # corrupts load math; treat it like None and fall back to the default.
+    repo = _FakeRepo()
+    uc = CaptureTaskUseCase(repo)  # type: ignore[arg-type]
+
+    intent = CaptureTaskIntent(task_title="макет", est_hours=0)
+    await uc.execute(intent, _ACTOR)
+
+    assert repo.created_tasks[0]["duration_hours"] == 8
+
+
+@pytest.mark.asyncio
 async def test_capture_forwards_required_skills():
     repo = _FakeRepo()
     uc = CaptureTaskUseCase(repo)  # type: ignore[arg-type]

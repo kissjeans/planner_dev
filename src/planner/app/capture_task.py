@@ -60,7 +60,10 @@ class CaptureTaskUseCase:
         self, intent: CaptureTaskIntent, actor: PersonRecord | None
     ) -> CaptureResult:
         project = await self._resolve_project(intent.project_name, actor)
-        duration = intent.est_hours if intent.est_hours is not None else _CAPTURE_HOURS
+        # A hallucinated est_hours <= 0 would create a 0-hour task that corrupts
+        # load math; clamp it to the default rather than rejecting the intent.
+        est = intent.est_hours
+        duration = est if est is not None and est > 0 else _CAPTURE_HOURS
         task = await self._repo.create_task(
             project_id=project.id,
             name=intent.task_title,
