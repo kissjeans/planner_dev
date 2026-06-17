@@ -3,6 +3,8 @@
 {% block body %}
 <h1>Проект</h1>
 <p><a href="/plan">← Назад</a></p>
+<p><a href="/plan/{{ project_id }}/gantt.png">Диаграмма Ганта (PNG)</a></p>
+<p><img src="/plan/{{ project_id }}/gantt.png" alt="Диаграмма Ганта" loading="lazy"></p>
 {% if tasks %}
 <table>
   <thead>

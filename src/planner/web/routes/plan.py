@@ -6,10 +6,13 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Form, Request, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from planner.app.add_project import deserialize_plan
 from planner.app.ports import RepoPort
+from planner.app.render.gantt import render_gantt
+from planner.domain.models import Assignment
 from planner.web.deps import actor_id_from, current_user, get_repo, require_admin
 
 router = APIRouter()
@@ -47,6 +50,28 @@ async def plan_detail(
         {"project_id": project_id, "tasks": tasks, "user": user},
     )
     return response
+
+
+@router.get("/plan/{project_id}/gantt.png")
+async def plan_gantt_png(
+    project_id: UUID,
+    user: dict[str, Any] = Depends(current_user),
+    repo: RepoPort = Depends(get_repo),
+) -> Response:
+    """Gantt timeline PNG for a project's committed plan (spec 7.4 / 4.5)."""
+    pv = await repo.get_committed_plan(project_id)
+    assignments = list(deserialize_plan(pv.payload).assignments) if pv else []
+    if not assignments:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Нет утверждённого плана.")
+
+    names = await repo.get_task_name_map()
+    origin = min(a.start_date for a in assignments)
+
+    def label_for(a: Assignment) -> str:
+        return names.get(a.task_id) or str(a.task_id)[:8]
+
+    png = render_gantt(assignments, origin, label_for=label_for)
+    return Response(content=png, media_type="image/png")
 
 
 @router.post("/plan/{project_id}/task/{task_id}/edit")

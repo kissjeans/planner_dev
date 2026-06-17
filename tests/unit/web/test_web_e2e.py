@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from planner.app.ports import (
     AuditRecord,
     PersonRecord,
+    PlanVersionRecord,
     ProjectRecord,
     TaskMeta,
     TaskRecord,
@@ -83,6 +84,28 @@ class WebFakeRepo:
 
     async def update_task_schedule(self, task_id, start, end, person_id):
         self.task_updates.append((task_id, start, end))
+
+    async def get_committed_plan(self, project_id):
+        if project_id != _PROJECT_ID:
+            return None
+        person = self.people["Айгуль"]
+        payload = {
+            "assignments": [
+                {
+                    "task_id": str(_TASK_ID),
+                    "person_id": str(person.id),
+                    "start_date": "2026-06-08",
+                    "end_date": "2026-06-09",
+                    "allocations": [
+                        {"person_id": str(person.id), "day": "2026-06-08", "hours": 8},
+                        {"person_id": str(person.id), "day": "2026-06-09", "hours": 8},
+                    ],
+                }
+            ],
+            "risks": [],
+            "end_date": "2026-06-09",
+        }
+        return PlanVersionRecord(uuid4(), _PROJECT_ID, "committed", payload)
 
 
 def _settings() -> Settings:
@@ -318,6 +341,27 @@ def _error_client(exc_type):
 
     app = create_app(_ErrorRepo(), _settings())
     return TestClient(app)
+
+
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+def test_gantt_png_requires_auth(client):
+    assert client.get(f"/plan/{_PROJECT_ID}/gantt.png").status_code == 401
+
+
+def test_gantt_png_returns_image_when_authed(client):
+    _auth(client)
+    r = client.get(f"/plan/{_PROJECT_ID}/gantt.png")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/png"
+    assert r.content.startswith(_PNG_MAGIC)
+
+
+def test_gantt_png_404_when_no_committed_plan(client):
+    _auth(client)
+    r = client.get(f"/plan/{uuid4()}/gantt.png")
+    assert r.status_code == 404
 
 
 def test_app_plan_not_found_returns_404():
