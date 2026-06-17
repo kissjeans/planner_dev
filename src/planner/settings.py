@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     jwt_secret: str = DEFAULT_JWT_SECRET
     """Secret used to sign admin-session JWTs (spec section 9.2)."""
 
+    # Notion
+    notion_token: str = ""
+    """Notion internal-integration token (optional — Notion sync disabled when empty)."""
+
+    notion_database_id: str = ""
+    """Target Notion database id for captured tasks (optional)."""
+
     # App
     timezone: str = "Europe/Moscow"
     """Application timezone"""

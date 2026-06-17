@@ -169,3 +169,13 @@ class TestEnsureSecureConfig:
     def test_custom_secret_in_production_is_allowed(self) -> None:
         from planner.settings import ensure_secure_config
         ensure_secure_config(self._base(debug=False, jwt_secret="a-strong-secret"))
+
+
+def test_settings_notion_defaults_empty(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u:p@localhost/db")
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+    monkeypatch.setenv("BOT_TOKEN", "t")
+    monkeypatch.setenv("TEAM_CHAT_ID", "1")
+    s = Settings(_env_file=None)
+    assert s.notion_token == ""
+    assert s.notion_database_id == ""
