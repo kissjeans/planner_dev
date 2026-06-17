@@ -71,6 +71,10 @@ class CaptureTaskIntent(BaseModel):
     assignee_names: list[str] = Field(default_factory=list, max_length=10)
     project_name: str | None = Field(default=None, max_length=200)
     deadline: date | None = None
+    # LLM-inferred enrichment (spec section 3, step 2). Both stay null/empty when
+    # the model is unsure — the capture path never interrogates to fill them.
+    est_hours: int | None = None
+    required_skills: list[str] = Field(default_factory=list, max_length=20)
 
 
 class ClarifyIntent(BaseModel):

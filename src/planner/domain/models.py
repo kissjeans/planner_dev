@@ -38,6 +38,7 @@ class Task:
     duration_hours: int
     allowed_person_ids: tuple[UUID, ...]
     project_id: UUID | None = None
+    required_skills: tuple[str, ...] = ()  # LLM-inferred skill hints (spec 3)
     is_splittable: bool = False
     allow_two_assignees: bool = False
     status: str = "not_done"  # not_done / done / preliminary / confirmed

@@ -205,6 +205,9 @@ class Task(Base):
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="not_done")
     source: Mapped[str] = mapped_column(Text, nullable=False, default="bot_formed")
+    required_skills: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
     is_preliminary: Mapped[bool] = mapped_column(nullable=False, default=False)
     is_splittable: Mapped[bool] = mapped_column(nullable=False, default=False)
     allow_two_assignees: Mapped[bool] = mapped_column(nullable=False, default=False)

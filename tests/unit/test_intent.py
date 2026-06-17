@@ -87,3 +87,21 @@ def test_capture_task_assignees_default_empty():
 
     i = CaptureTaskIntent(task_title="бриф")
     assert i.assignee_names == []
+
+
+def test_capture_task_enrichment_defaults():
+    from planner.domain.intent import CaptureTaskIntent
+
+    i = CaptureTaskIntent(task_title="бриф")
+    assert i.est_hours is None
+    assert i.required_skills == []
+
+
+def test_capture_task_carries_enrichment_fields():
+    from planner.domain.intent import CaptureTaskIntent
+
+    i = CaptureTaskIntent(
+        task_title="сделать макет", est_hours=12, required_skills=["дизайн"]
+    )
+    assert i.est_hours == 12
+    assert i.required_skills == ["дизайн"]
