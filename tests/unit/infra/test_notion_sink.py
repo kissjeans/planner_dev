@@ -42,6 +42,32 @@ def test_mapping_title_only_when_no_match():
     assert list(props.keys()) == ["Name"]
 
 
+def test_mapping_real_demo_schema_multiselect_date_status():
+    """Mirrors the live 'All Tasks (demo)' DB: multi_select people/client,
+    a date column named 'Дата', and a Status select with a default option."""
+    from datetime import date
+
+    from planner.infra.notion.mapping import build_properties
+    schema = {
+        "Name": {"type": "title"},
+        "Status": {"type": "select",
+                   "select": {"options": [{"name": "Сделать"}, {"name": "Готово"}]}},
+        "Assign_new": {"type": "multi_select", "multi_select": {"options": []}},
+        "Заказчик_new": {"type": "multi_select", "multi_select": {"options": []}},
+        "Дата": {"type": "date", "date": {}},
+    }
+    props = build_properties(
+        schema,
+        SinkTask(title="бриф МТС", assignees=["Рай", "Андрей"],
+                 project="МТС", deadline=date(2026, 6, 20)),
+    )
+    assert props["Name"]["title"][0]["text"]["content"] == "бриф МТС"
+    assert props["Дата"]["date"]["start"] == "2026-06-20"
+    assert [o["name"] for o in props["Assign_new"]["multi_select"]] == ["Рай", "Андрей"]
+    assert props["Заказчик_new"]["multi_select"][0]["name"] == "МТС"
+    assert props["Status"]["select"]["name"] == "Сделать"
+
+
 @pytest.mark.asyncio
 async def test_notion_sink_creates_page(monkeypatch):
     from planner.infra.notion import client as mod
