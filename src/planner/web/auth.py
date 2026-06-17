@@ -34,8 +34,11 @@ def verify_telegram_login(data: dict[str, str], bot_token: str) -> bool:
     if not hmac.compare_digest(expected, received_hash):
         return False
 
-    auth_date = data.get("auth_date")
-    return not (auth_date and time.time() - int(auth_date) > _AUTH_MAX_AGE)
+    try:
+        auth_date = int(data["auth_date"])
+    except (KeyError, ValueError, TypeError):
+        return False  # missing/malformed freshness is unverifiable → reject
+    return time.time() - auth_date <= _AUTH_MAX_AGE
 
 
 def create_jwt(claims: dict[str, Any], secret: str) -> str:

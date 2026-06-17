@@ -38,6 +38,19 @@ def test_stale_auth_date_rejected():
     assert verify_telegram_login(data, BOT) is False
 
 
+def test_malformed_auth_date_rejected_not_raised():
+    """A signed payload with a non-int auth_date must be rejected (False),
+    not raise ValueError (which would surface as a 500)."""
+    data = _signed({"id": "42", "first_name": "Test", "auth_date": "not-a-number"})
+    assert verify_telegram_login(data, BOT) is False
+
+
+def test_missing_auth_date_rejected():
+    """A signed payload without auth_date is unverifiable freshness → reject."""
+    data = _signed({"id": "42", "first_name": "Test"})
+    assert verify_telegram_login(data, BOT) is False
+
+
 def test_jwt_round_trip():
     token = create_jwt({"sub": "u1", "is_admin": True}, "secret")
     claims = decode_jwt(token, "secret")

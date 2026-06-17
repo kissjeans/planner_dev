@@ -412,6 +412,18 @@ def test_vacation_non_uuid_sub_records_null_actor(client):
     assert recorded_actor is None
 
 
+def test_telegram_login_malformed_auth_date_returns_401_not_500(client):
+    """A correctly-signed payload with a non-int auth_date must yield 401,
+    not a 500 from an unguarded int() parse."""
+    data = {"id": "42", "first_name": "Boss", "auth_date": "not-a-number"}
+    check = "\n".join(f"{k}={data[k]}" for k in sorted(data))
+    secret = hashlib.sha256(BOT.encode()).digest()
+    data["hash"] = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
+
+    r = client.get("/login/telegram", params=data, follow_redirects=False)
+    assert r.status_code == 401
+
+
 def test_telegram_login_callback_sets_cookie(client):
     data = {"id": "42", "first_name": "Boss", "auth_date": str(int(time.time()))}
     check = "\n".join(f"{k}={data[k]}" for k in sorted(data))
