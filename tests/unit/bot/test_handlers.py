@@ -258,9 +258,24 @@ async def test_edit_callback_returns_prompt():
         set_state=AsyncMock(),
         update_data=AsyncMock(),
     )
-    await confirm.handle_edit(cb, state)  # type: ignore[arg-type]
+    await confirm.handle_edit(cb, state, {"is_admin": True})  # type: ignore[arg-type]
     assert state.set_state.called
     assert len(cb_answers.calls) >= 1
+
+
+@pytest.mark.asyncio
+async def test_edit_callback_non_admin_blocked():
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    cb, cb_answers = _callback("edit:some-id")
+    cb.message = SimpleNamespace(answer=cb_answers.answer)  # type: ignore[attr-defined]
+    state = SimpleNamespace(set_state=AsyncMock(), update_data=AsyncMock())
+
+    await confirm.handle_edit(cb, state, {"is_admin": False})  # type: ignore[arg-type]
+
+    assert "Только админ" in cb_answers.calls[0]
+    assert not state.set_state.called  # never entered the edit FSM
 
 
 # ---------------------------------------------------------------------------

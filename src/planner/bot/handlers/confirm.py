@@ -45,8 +45,14 @@ async def handle_confirm(
 
 
 @router.callback_query(F.data.startswith("edit:"))
-async def handle_edit(cb: CallbackQuery, state: FSMContext) -> None:
+async def handle_edit(
+    cb: CallbackQuery, state: FSMContext, actor: dict[str, Any]
+) -> None:
     """Enter FSM edit loop (spec flow step 14): store plan_version_id, await edit text."""
+    if not actor.get("is_admin"):
+        await cb.answer("Только админ может править план.", show_alert=True)
+        return
+
     assert cb.data is not None
     pv_id = cb.data.split(":", 1)[1]
     await state.set_state(PlanEditState.waiting)
