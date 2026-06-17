@@ -17,6 +17,20 @@ from planner.domain.models import Task as DomainTask
 
 
 @dataclass(frozen=True)
+class SinkTask:
+    title: str
+    assignees: list[str]
+    project: str | None
+    deadline: date | None
+
+
+class TaskSinkPort(Protocol):
+    async def push_task(self, task: SinkTask) -> str | None:
+        """Mirror a captured task to an external sink. Returns a URL/id or None."""
+        ...
+
+
+@dataclass(frozen=True)
 class PersonRecord:
     id: UUID
     name: str
