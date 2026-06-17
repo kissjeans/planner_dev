@@ -9,12 +9,13 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 
+from planner.app.add_project import ProjectTemplate, instantiate_template
 from planner.app.ports import RepoPort
 from planner.app.what_if import WhatIfUseCase
 from planner.bot.replies.plan_explainer import explain_diff
@@ -63,6 +64,30 @@ async def _base_request(repo: RepoPort, solver: SolverPort) -> PlanRequest | Non
     )
 
 
+async def _lite_request(repo: RepoPort) -> PlanRequest | None:
+    """Rebuild a PlanRequest from the LITE template (spec §6: switch_to_lite).
+
+    Mirrors AddProjectUseCase's template instantiation: the lite template's task
+    set is the real scope-reduced alternative. Returns None when no lite template
+    can be mapped, so the caller can answer a friendly message instead of a no-op.
+    The template's own ``allowed_person_ids`` need not match current people — the
+    greedy solver falls back to the whole team, keeping the lite plan feasible.
+    """
+    template = await repo.get_project_template("lite")
+    if not isinstance(template, ProjectTemplate) or not template.tasks:
+        return None
+    people = await repo.get_solver_people()
+    if not people:
+        return None
+    tasks, deps = instantiate_template(template, uuid4())
+    return PlanRequest(
+        people=people,
+        tasks=tasks,
+        dependencies=deps,
+        horizon_start=date.today(),
+    )
+
+
 @router.message(Command("whatif"))
 async def handle_whatif(
     message: Message,
@@ -84,11 +109,43 @@ async def handle_whatif(
     if repo is not None and solver is not None:
         base_req = await _base_request(repo, solver)
         if base_req is not None and base_req.tasks:
+            target = intent.project_title or "—"
+            if intent.operation == "switch_to_lite":
+                await _answer_switch_to_lite(message, repo, solver, base_req, target)
+                return
             diff = WhatIfUseCase(solver).execute(base_req, intent)
             summary = explain_diff(diff, {}, {})
-            target = intent.project_title or "—"
             await message.answer(f"Что-если ({intent.operation}, проект {target}):\n{summary}")
             return
 
     target = intent.project_title or "—"
     await message.answer(f"Что-если: {intent.operation}, проект {target}.")
+
+
+async def _answer_switch_to_lite(
+    message: Message,
+    repo: RepoPort,
+    solver: SolverPort,
+    base_req: PlanRequest,
+    target: str,
+) -> None:
+    """Render the real scope reduction of switching the project to its lite template.
+
+    Diffs the committed full plan against a freshly-solved lite plan (in memory,
+    no DB write). When no lite template maps, answers a friendly message rather
+    than silently no-op'ing (spec §6 / Cluster G).
+    """
+    lite_req = await _lite_request(repo)
+    if lite_req is None:
+        await message.answer("Не могу сопоставить lite-шаблон для этого проекта.")
+        return
+    base_plan = solver.plan(base_req)
+    lite_plan = solver.plan(lite_req)
+    diff = solver.diff(base_plan, lite_plan)
+    summary = explain_diff(diff, {}, {})
+    scope = (
+        f"Объём сократится: {len(base_req.tasks)} → {len(lite_req.tasks)} задач(и)."
+    )
+    await message.answer(
+        f"Что-если (switch_to_lite, проект {target}):\n{scope}\n{summary}"
+    )

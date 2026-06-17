@@ -34,9 +34,10 @@ def apply_operation(req: PlanRequest, intent: WhatIfIntent) -> PlanRequest:
     if intent.operation == "drop_project":
         return dataclasses.replace(req, tasks=(), dependencies=())
 
-    # switch_to_lite needs template metadata not present in the solver request;
-    # MVP treats it as a no-op here and lets the caller rebuild from the lite
-    # template (spec section 6, deferred detail).
+    # switch_to_lite needs template metadata not present in the solver request,
+    # so apply_operation stays pure and the WHATIF HANDLER drives it: it rebuilds
+    # the task set from the project's lite template and diffs full-vs-lite
+    # (planner.bot.handlers.whatif._answer_switch_to_lite, spec section 6).
     return req
 
 

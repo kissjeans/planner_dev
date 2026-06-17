@@ -339,3 +339,117 @@ async def test_vacation_person_not_found_message():
         repo=_RepoNotFound(), actor_record=actor_record,  # type: ignore[arg-type]
     )
     assert "не найден" in answers.calls[0]
+
+
+# ---------------------------------------------------------------------------
+# /whatif switch_to_lite (real scope reduction — Cluster G / spec §6)
+# ---------------------------------------------------------------------------
+
+class _WhatIfLiteRepo:
+    """Fake repo that exposes a committed full plan and a smaller lite template.
+
+    Read-only: any write attempt would raise AttributeError (methods absent).
+    """
+
+    def __init__(self, *, lite_template: Any, n_committed_tasks: int = 3) -> None:
+        from planner.domain.models import Person
+
+        self._person = Person(id=uuid4(), name="Андрей", capacity_h=8)
+        self._lite_template = lite_template
+        self._task_ids = [uuid4() for _ in range(n_committed_tasks)]
+
+    async def get_solver_people(self) -> tuple[Any, ...]:
+        return (self._person,)
+
+    async def list_committed_plans(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "assignments": [
+                    {
+                        "task_id": str(tid),
+                        "person_id": str(self._person.id),
+                        "allocations": [
+                            {
+                                "person_id": str(self._person.id),
+                                "day": "2026-06-02",
+                                "hours": 8,
+                            }
+                        ],
+                    }
+                    for tid in self._task_ids
+                ]
+            }
+        ]
+
+    async def get_task_name_map(self) -> dict[Any, str]:
+        return {tid: f"task-{i}" for i, tid in enumerate(self._task_ids)}
+
+    async def list_task_dependencies(self) -> list[Any]:
+        return []
+
+    async def get_project_template(self, code: str) -> Any:
+        return self._lite_template if code == "lite" else None
+
+
+def _lite_template(n_tasks: int = 1):
+    from planner.app.add_project import ProjectTemplate, TemplateTaskSpec
+
+    return ProjectTemplate(
+        code="lite",
+        tasks=tuple(
+            TemplateTaskSpec(
+                ord=i,
+                name=f"lite-{i}",
+                duration_hours=8,
+                allowed_person_ids=(),
+            )
+            for i in range(n_tasks)
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_whatif_switch_to_lite_reduces_scope():
+    from planner.domain.calendar.rules import WeekendCalendar
+    from planner.domain.solver.greedy import GreedySolver
+
+    repo = _WhatIfLiteRepo(lite_template=_lite_template(n_tasks=1), n_committed_tasks=3)
+    solver = GreedySolver(WeekendCalendar())
+    intent = WhatIfIntent(operation="switch_to_lite", project_title="Альфа")
+    msg, answers = _message("/whatif lite Альфа")
+    parser = _FakeParser(intent)
+
+    await whatif.handle_whatif(
+        msg,  # type: ignore[arg-type]
+        parser,
+        {"is_admin": False},
+        repo=repo,  # type: ignore[arg-type]
+        solver=solver,  # type: ignore[arg-type]
+    )
+
+    reply = answers.calls[0]
+    # Real reduction: 3 committed tasks -> 1 lite task. Message must convey it.
+    assert "3" in reply and "1" in reply
+    assert "не могу сопоставить" not in reply
+
+
+@pytest.mark.asyncio
+async def test_whatif_switch_to_lite_missing_template_friendly_message():
+    from planner.domain.calendar.rules import WeekendCalendar
+    from planner.domain.solver.greedy import GreedySolver
+
+    repo = _WhatIfLiteRepo(lite_template=None, n_committed_tasks=2)
+    solver = GreedySolver(WeekendCalendar())
+    intent = WhatIfIntent(operation="switch_to_lite", project_title="Альфа")
+    msg, answers = _message("/whatif lite Альфа")
+    parser = _FakeParser(intent)
+
+    await whatif.handle_whatif(
+        msg,  # type: ignore[arg-type]
+        parser,
+        {"is_admin": False},
+        repo=repo,  # type: ignore[arg-type]
+        solver=solver,  # type: ignore[arg-type]
+    )
+
+    assert "не могу сопоставить lite-шаблон" in answers.calls[0].lower()
