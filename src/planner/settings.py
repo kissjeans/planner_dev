@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     """Anthropic API key for Claude models (optional — falls back to BasicIntentParser)"""
 
+    agent_enabled: bool = True
+    """Use the Claude tool-use PlannerAgent (when a key is set). Off → legacy enum path."""
+
     # Web
     webhook_secret: str = ""
     """Secret for webhook validation (optional)"""

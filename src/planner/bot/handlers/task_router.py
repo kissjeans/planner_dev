@@ -10,8 +10,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from datetime import date
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
+
+if TYPE_CHECKING:
+    from planner.infra.llm.agent import PlannerAgent
 
 from aiogram import F, Router
 from aiogram.filters import Command, StateFilter
@@ -407,6 +410,7 @@ async def _handle_text(
     edit_state: FSMContext | None = None,
     task_sink: TaskSinkPort | None = None,
     history: ChatHistory | None = None,
+    agent: PlannerAgent | None = None,
 ) -> UUID | None:
     # Known-sender gate (spec 16 + QA H1/H2): only resolved team members or
     # admins may have their messages parsed/acted on. This blocks strangers
@@ -437,6 +441,27 @@ async def _handle_text(
         known_projects=known_projects,
         recent_messages=recent,
     )
+    # Tool-use agent path (Task 3): when an agent is wired and the DB is
+    # available, the agent reads/reasons/acts via tools instead of the rigid
+    # enum classifier. The ToolBox is request-scoped (carries this request's
+    # actor), so it is built here per message. Falls through to the legacy
+    # parse_intents path below when there is no agent or no repo (echo mode).
+    if agent is not None and repo is not None and solver is not None:
+        from planner.infra.llm.tools import ToolBox
+
+        toolbox = ToolBox(
+            repo=repo,
+            solver=solver,
+            actor=actor,
+            actor_record=actor_record,
+            task_sink=task_sink,
+        )
+        reply = await agent.run(text, ctx, toolbox)
+        kb = _plan_keyboard(reply.proposed_pv_id) if reply.proposed_pv_id else None
+        await message.answer(reply.text, reply_markup=kb)
+        if history is not None and message.chat is not None:
+            history.record(message.chat.id, reply.text)
+        return reply.proposed_pv_id
     # A compound message ("какая загрузка у Андрея? Если свободно, поставь
     # задачу") carries several actions — dispatch EACH in order. Single-action
     # messages yield a one-element list, so the loop runs once unchanged.
@@ -468,6 +493,7 @@ async def handle_voice(
     task_sink: TaskSinkPort | None = None,
     state: FSMContext | None = None,
     history: ChatHistory | None = None,
+    agent: PlannerAgent | None = None,
 ) -> None:
     if stt is None or message.voice is None or message.bot is None:
         await message.answer("Голосовые сообщения не поддерживаются — напиши текстом.")
@@ -505,6 +531,7 @@ async def handle_voice(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
         confirm_uc=confirm_uc, edit_state=state, task_sink=task_sink, history=history,
+        agent=agent,
     )
 
 
@@ -521,6 +548,7 @@ async def handle_task(
     task_sink: TaskSinkPort | None = None,
     state: FSMContext | None = None,
     history: ChatHistory | None = None,
+    agent: PlannerAgent | None = None,
 ) -> None:
     text = (message.text or "").partition(" ")[2].strip()
     if not text:
@@ -530,6 +558,7 @@ async def handle_task(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
         confirm_uc=confirm_uc, edit_state=state, task_sink=task_sink, history=history,
+        agent=agent,
     )
 
 
@@ -606,6 +635,7 @@ async def handle_mention_or_dm(
     task_sink: TaskSinkPort | None = None,
     state: FSMContext | None = None,
     history: ChatHistory | None = None,
+    agent: PlannerAgent | None = None,
 ) -> None:
     """Handle @mention in groups and direct messages in private chats (spec 8.1).
 
@@ -634,4 +664,5 @@ async def handle_mention_or_dm(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
         confirm_uc=confirm_uc, edit_state=state, task_sink=task_sink, history=history,
+        agent=agent,
     )

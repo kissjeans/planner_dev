@@ -117,6 +117,32 @@ def test_build_dispatcher_wires_null_sink_when_unconfigured(mock_redis_storage):
     assert isinstance(dp["task_sink"], NullTaskSink)
 
 
+def test_build_dispatcher_no_key_no_agent(mock_redis_storage):
+    """Without an API key the tool-use agent is not wired (legacy path only)."""
+    settings = _settings(anthropic_api_key="")
+    dp = build_dispatcher(settings, BasicIntentParser())
+    assert "agent" not in dp.workflow_data
+
+
+def test_build_dispatcher_agent_disabled_no_agent(mock_redis_storage):
+    """agent_enabled=False keeps the legacy enum path even with a key."""
+    settings = _settings(anthropic_api_key="sk-ant-test", agent_enabled=False)
+    with patch("planner.infra.llm.agent.PlannerAgent") as mock_cls:
+        mock_cls.return_value = MagicMock()
+        dp = build_dispatcher(settings, BasicIntentParser())
+    assert "agent" not in dp.workflow_data
+
+
+def test_build_dispatcher_wires_agent_when_key_and_enabled(mock_redis_storage):
+    """Key + agent_enabled → dp['agent'] is a singleton PlannerAgent."""
+    settings = _settings(anthropic_api_key="sk-ant-test", agent_enabled=True)
+    sentinel = MagicMock()
+    with patch("planner.infra.llm.agent.PlannerAgent", return_value=sentinel) as mock_cls:
+        dp = build_dispatcher(settings, BasicIntentParser())
+    mock_cls.assert_called_once_with("sk-ant-test")
+    assert dp["agent"] is sentinel
+
+
 @pytest.mark.asyncio
 async def test_set_bot_commands_registers_menu():
     """register_bot_commands sets the Telegram command menu (spec 8)."""

@@ -65,6 +65,12 @@ def build_dispatcher(
     storage = RedisStorage.from_url(settings.redis_url)
     dp = Dispatcher(storage=storage)
     dp["parser"] = parser
+    # Tool-use agent (singleton). ToolBox is request-scoped — built per message in
+    # the handler with the request actor — so only the agent lives on the dispatcher.
+    if settings.anthropic_api_key and settings.agent_enabled:
+        from planner.infra.llm.agent import PlannerAgent
+
+        dp["agent"] = PlannerAgent(settings.anthropic_api_key)
     if repo is not None:
         dp["repo"] = repo
     if solver is not None:

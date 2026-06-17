@@ -1273,3 +1273,192 @@ async def test_handle_text_compound_runs_load_and_capture():
     # Capture ran → the task was written and confirmed.
     assert repo.captured_tasks == ["добрифовать МТС"]
     assert any("Записал" in c for c in answers.calls), "capture must confirm"
+
+
+# ---------------------------------------------------------------------------
+# Agent path (Task 3) — when an agent dep is present and repo is set, the
+# tool-use agent runs; otherwise the legacy parse_intents path runs.
+# ---------------------------------------------------------------------------
+
+class _FakeAgent:
+    """Records run() args and returns a canned AgentReply."""
+
+    def __init__(self, reply: Any) -> None:
+        self._reply = reply
+        self.calls: list[tuple[str, Any, Any]] = []
+
+    async def run(self, text: str, ctx: Any, toolbox: Any) -> Any:
+        self.calls.append((text, ctx, toolbox))
+        return self._reply
+
+
+class _ExplodingParser:
+    """Parser double whose parse_intents must never be called on the agent path."""
+
+    async def parse(self, text: str, ctx: Any) -> Any:  # pragma: no cover
+        raise AssertionError("legacy parse() must not run when agent is active")
+
+    async def parse_intents(self, text: str, ctx: Any) -> list[Any]:
+        raise AssertionError("legacy parse_intents() must not run when agent is active")
+
+
+@pytest.mark.asyncio
+async def test_handle_text_agent_path_answers_without_legacy_parser():
+    """Agent present + repo set → agent.run drives the reply; parser untouched."""
+    from planner.app.ports import PersonRecord
+    from planner.bot.handlers.task_router import _handle_text
+    from planner.infra.llm.agent import AgentReply
+
+    repo = _FakeRepo(people=(), plans=[])
+    actor_record = PersonRecord(id=uuid4(), name="Менеджер", is_admin=True)
+    agent = _FakeAgent(AgentReply(text="Готово, записал задачу."))
+
+    captured: list[Any] = []
+
+    async def _answer(text: str, reply_markup: Any = None, **kw: Any) -> None:
+        captured.append((text, reply_markup))
+
+    msg = SimpleNamespace(
+        text="поставь задачу", answer=_answer,
+        chat=SimpleNamespace(type="private", id=7),
+        reply_to_message=None, bot=None,
+    )
+    pv = await _handle_text(
+        msg, "поставь задачу", _ExplodingParser(),  # type: ignore[arg-type]
+        {"is_admin": True}, repo=repo, solver=GreedySolver(WeekendCalendar()),
+        actor_record=actor_record, agent=agent,  # type: ignore[arg-type]
+    )
+    assert agent.calls, "agent.run must be invoked"
+    assert captured == [("Готово, записал задачу.", None)]
+    assert pv is None  # no proposed plan → no pv returned
+
+
+@pytest.mark.asyncio
+async def test_handle_text_agent_path_attaches_keyboard_on_proposed_plan():
+    """A proposed_pv_id on the AgentReply → ✅/✏️ buttons + pv returned."""
+    from planner.app.ports import PersonRecord
+    from planner.bot.handlers.task_router import _handle_text
+    from planner.infra.llm.agent import AgentReply
+
+    repo = _FakeRepo(people=(), plans=[])
+    actor_record = PersonRecord(id=uuid4(), name="Менеджер", is_admin=True)
+    pv_id = uuid4()
+    agent = _FakeAgent(AgentReply(text="Предложил план.", proposed_pv_id=pv_id))
+
+    captured: list[Any] = []
+
+    async def _answer(text: str, reply_markup: Any = None, **kw: Any) -> None:
+        captured.append((text, reply_markup))
+
+    msg = SimpleNamespace(
+        text="спланируй проект", answer=_answer,
+        chat=SimpleNamespace(type="private", id=8),
+        reply_to_message=None, bot=None,
+    )
+    pv = await _handle_text(
+        msg, "спланируй проект", _ExplodingParser(),  # type: ignore[arg-type]
+        {"is_admin": True}, repo=repo, solver=GreedySolver(WeekendCalendar()),
+        actor_record=actor_record, agent=agent,  # type: ignore[arg-type]
+    )
+    assert pv == pv_id
+    (text, kb), = captured
+    assert text == "Предложил план."
+    assert kb is not None, "proposed plan must carry the confirm keyboard"
+
+
+@pytest.mark.asyncio
+async def test_handle_text_no_agent_uses_legacy_parser():
+    """agent is None → existing parse_intents/dispatch path runs unchanged."""
+    from planner.bot.handlers.task_router import _handle_text
+
+    intent = ClarifyIntent(question="Уточни задачу.")
+    msg, answers = _message()
+    await _handle_text(
+        msg, "что угодно", _FakeParser(intent), {"is_admin": True}, agent=None  # type: ignore[arg-type]
+    )
+    assert answers.calls == ["Уточни задачу."]
+
+
+@pytest.mark.asyncio
+async def test_handle_text_agent_skipped_when_repo_none():
+    """Agent present but repo is None (degraded/echo) → legacy parse path runs."""
+    from planner.bot.handlers.task_router import _handle_text
+    from planner.infra.llm.agent import AgentReply
+
+    intent = ClarifyIntent(question="Нет базы.")
+    agent = _FakeAgent(AgentReply(text="не должно вызваться"))
+    msg, answers = _message()
+    await _handle_text(
+        msg, "что угодно", _FakeParser(intent), {"is_admin": True},
+        repo=None, agent=agent,  # type: ignore[arg-type]
+    )
+    assert not agent.calls, "agent must not run without a repo"
+    assert answers.calls == ["Нет базы."]
+
+
+@pytest.mark.asyncio
+async def test_handle_task_threads_agent_to_handle_text():
+    """/task <text> with an agent dep routes through the agent path."""
+    from planner.app.ports import PersonRecord
+    from planner.bot.handlers.task_router import handle_task
+    from planner.infra.llm.agent import AgentReply
+
+    repo = _FakeRepo(people=(), plans=[])
+    actor_record = PersonRecord(id=uuid4(), name="Менеджер", is_admin=True)
+    agent = _FakeAgent(AgentReply(text="agent-handled"))
+    msg, answers = _message("/task сделай магию")
+    await handle_task(
+        msg, _ExplodingParser(), {"is_admin": True},  # type: ignore[arg-type]
+        repo=repo, solver=GreedySolver(WeekendCalendar()),
+        actor_record=actor_record, agent=agent,  # type: ignore[arg-type]
+    )
+    assert agent.calls and agent.calls[0][0] == "сделай магию"
+    assert answers.calls == ["agent-handled"]
+
+
+@pytest.mark.asyncio
+async def test_handle_mention_threads_agent_to_handle_text():
+    """A DM with an agent dep routes through the agent path."""
+    from planner.app.ports import PersonRecord
+    from planner.bot.handlers.task_router import handle_mention_or_dm
+    from planner.infra.llm.agent import AgentReply
+
+    repo = _FakeRepo(people=(), plans=[])
+    actor_record = PersonRecord(id=uuid4(), name="Менеджер", is_admin=True)
+    agent = _FakeAgent(AgentReply(text="dm-handled"))
+    msg, answers = _message("привет, спланируй", chat_type="private")
+    await handle_mention_or_dm(
+        msg, _ExplodingParser(), {"is_admin": True},  # type: ignore[arg-type]
+        repo=repo, solver=GreedySolver(WeekendCalendar()),
+        actor_record=actor_record, agent=agent,  # type: ignore[arg-type]
+    )
+    assert agent.calls
+    assert answers.calls == ["dm-handled"]
+
+
+@pytest.mark.asyncio
+async def test_handle_voice_threads_agent_to_handle_text():
+    """A voice message with an agent dep routes the transcribed text to the agent."""
+    from planner.app.ports import PersonRecord
+    from planner.bot.handlers.task_router import handle_voice
+    from planner.infra.llm.agent import AgentReply
+
+    repo = _FakeRepo(people=(), plans=[])
+    actor_record = PersonRecord(id=uuid4(), name="Менеджер", is_admin=True)
+    agent = _FakeAgent(AgentReply(text="voice-handled"))
+    msg, answers = _message()
+    audio_buf = SimpleNamespace(read=lambda: b"audio")
+    file_obj = SimpleNamespace(file_path="voice/f.ogg")
+    msg.voice = SimpleNamespace(file_id="abc", file_size=1000)
+    msg.bot = SimpleNamespace(
+        get_file=AsyncMock(return_value=file_obj),
+        download_file=AsyncMock(return_value=audio_buf),
+    )
+    stt = SimpleNamespace(transcribe=AsyncMock(return_value="спланируй проект"))
+    await handle_voice(
+        msg, _ExplodingParser(), {"is_admin": True}, stt=stt,  # type: ignore[arg-type]
+        repo=repo, solver=GreedySolver(WeekendCalendar()),
+        actor_record=actor_record, agent=agent,  # type: ignore[arg-type]
+    )
+    assert agent.calls and agent.calls[0][0] == "спланируй проект"
+    assert "voice-handled" in answers.calls
