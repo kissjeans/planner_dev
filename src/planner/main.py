@@ -51,6 +51,9 @@ async def main() -> None:
         stt="faster-whisper",
         admin_ids=sorted(settings.admin_id_set),
         timezone=settings.timezone,
+        notion="on"
+        if settings.notion_token and settings.notion_database_id
+        else "off",
     )
 
     engine = create_engine(settings.database_url)

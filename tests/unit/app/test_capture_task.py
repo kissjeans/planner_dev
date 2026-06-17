@@ -150,6 +150,69 @@ async def test_capture_forwards_required_skills():
     assert repo.created_tasks[0]["required_skills"] == ["дизайн"]
 
 
+class _SpySink:
+    def __init__(self, *, url: str | None = "https://notion.so/p1") -> None:
+        self.url = url
+        self.calls: list[Any] = []
+
+    async def push_task(self, task) -> str | None:
+        self.calls.append(task)
+        return self.url
+
+
+class _BoomSink:
+    async def push_task(self, task) -> str | None:
+        raise RuntimeError("notion down")
+
+
+@pytest.mark.asyncio
+async def test_capture_mirrors_to_sink_after_repo_write():
+    andrey = PersonRecord(id=uuid4(), name="Андрей")
+    mts = ProjectRecord(uuid4(), "МТС", "planning")
+    repo = _FakeRepo(known_projects={"МТС": mts}, known_people={"Андрей": andrey})
+    sink = _SpySink()
+    uc = CaptureTaskUseCase(repo, sink=sink)  # type: ignore[arg-type]
+
+    intent = CaptureTaskIntent(
+        task_title="подготовить бриф", assignee_names=["Андрей"],
+        project_name="МТС", deadline=date(2026, 6, 20),
+    )
+    result = await uc.execute(intent, _ACTOR)
+
+    # Sink called exactly once, AFTER the repo write (task already created).
+    assert repo.created_tasks  # repo write happened
+    assert len(sink.calls) == 1
+    pushed = sink.calls[0]
+    assert pushed.title == "подготовить бриф"
+    assert pushed.assignees == ["Андрей"]
+    assert pushed.project == "МТС"
+    assert pushed.deadline == date(2026, 6, 20)
+    assert result.notion_url == "https://notion.so/p1"
+
+
+@pytest.mark.asyncio
+async def test_capture_without_sink_has_no_notion_url():
+    repo = _FakeRepo()
+    uc = CaptureTaskUseCase(repo)  # type: ignore[arg-type]
+
+    result = await uc.execute(CaptureTaskIntent(task_title="x"), _ACTOR)
+
+    assert result.notion_url is None
+
+
+@pytest.mark.asyncio
+async def test_capture_survives_sink_failure():
+    repo = _FakeRepo()
+    uc = CaptureTaskUseCase(repo, sink=_BoomSink())  # type: ignore[arg-type]
+
+    result = await uc.execute(CaptureTaskIntent(task_title="x"), _ACTOR)
+
+    # Capture still succeeds; no link surfaced.
+    assert result.task_title == "x"
+    assert result.notion_url is None
+    assert repo.created_tasks  # task persisted despite sink failure
+
+
 @pytest.mark.asyncio
 async def test_capture_assigns_multiple_people():
     andrey = PersonRecord(id=uuid4(), name="Андрей")

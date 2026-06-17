@@ -30,7 +30,7 @@ from planner.app.confirm_plan import (
     PlanNotProposedError,
 )
 from planner.app.explain_plan import ExplainPlanUseCase
-from planner.app.ports import PersonRecord, RepoPort, TaskMeta
+from planner.app.ports import PersonRecord, RepoPort, TaskMeta, TaskSinkPort
 from planner.app.suggest_assignees import SuggestAssigneesUseCase
 from planner.bot.states import PlanEditState
 from planner.domain.intent import (
@@ -171,6 +171,7 @@ async def build_capture_reply(
     *,
     repo: RepoPort,
     actor_record: PersonRecord | None,
+    task_sink: TaskSinkPort | None = None,
 ) -> str:
     """Capture the task into the DB and return a confirmation line.
 
@@ -178,7 +179,7 @@ async def build_capture_reply(
     *suggestion* of who could take it (spec section 5). This never auto-assigns
     — a named assignee leaves the flow unchanged.
     """
-    result = await CaptureTaskUseCase(repo).execute(intent, actor_record)
+    result = await CaptureTaskUseCase(repo, sink=task_sink).execute(intent, actor_record)
     lines = [
         "✓ Записал",
         f"  задача: {result.task_title}",
@@ -189,6 +190,8 @@ async def build_capture_reply(
     hint = await _suggestion_hint(intent, repo=repo)
     if hint is not None:
         lines.append(hint)
+    if result.notion_url:
+        lines.append(f"\n🔗 Notion: {result.notion_url}")
     return "\n".join(lines)
 
 
@@ -270,6 +273,7 @@ async def _handle_text(
     confirm_uc: ConfirmPlanUseCase | None = None,
     last_pv_id: UUID | None = None,
     edit_state: FSMContext | None = None,
+    task_sink: TaskSinkPort | None = None,
 ) -> UUID | None:
     # Known-sender gate (spec 16 + QA H1/H2): only resolved team members or
     # admins may have their messages parsed/acted on. This blocks strangers
@@ -320,7 +324,9 @@ async def _handle_text(
             await message.answer(describe_intent(intent))
             return None
         await message.answer(
-            await build_capture_reply(intent, repo=repo, actor_record=actor_record)
+            await build_capture_reply(
+                intent, repo=repo, actor_record=actor_record, task_sink=task_sink
+            )
         )
         return None
 
@@ -369,6 +375,7 @@ async def handle_voice(
     actor_record: PersonRecord | None = None,
     explain_uc: ExplainPlanUseCase | None = None,
     confirm_uc: ConfirmPlanUseCase | None = None,
+    task_sink: TaskSinkPort | None = None,
 ) -> None:
     if stt is None or message.voice is None or message.bot is None:
         await message.answer("Голосовые сообщения не поддерживаются — напиши текстом.")
@@ -405,7 +412,7 @@ async def handle_voice(
     await _handle_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
-        confirm_uc=confirm_uc,
+        confirm_uc=confirm_uc, task_sink=task_sink,
     )
 
 
@@ -419,6 +426,7 @@ async def handle_task(
     actor_record: PersonRecord | None = None,
     explain_uc: ExplainPlanUseCase | None = None,
     confirm_uc: ConfirmPlanUseCase | None = None,
+    task_sink: TaskSinkPort | None = None,
 ) -> None:
     text = (message.text or "").partition(" ")[2].strip()
     if not text:
@@ -427,7 +435,7 @@ async def handle_task(
     await _handle_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
-        confirm_uc=confirm_uc,
+        confirm_uc=confirm_uc, task_sink=task_sink,
     )
 
 
@@ -442,6 +450,7 @@ async def handle_edit_text(
     actor_record: PersonRecord | None = None,
     explain_uc: ExplainPlanUseCase | None = None,
     confirm_uc: ConfirmPlanUseCase | None = None,
+    task_sink: TaskSinkPort | None = None,
 ) -> None:
     """FSM edit loop (spec flow step 14 / scenario J).
 
@@ -463,6 +472,7 @@ async def handle_edit_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
         confirm_uc=confirm_uc, last_pv_id=old_pv_id, edit_state=state,
+        task_sink=task_sink,
     )
     # The edit produced a fresh proposal: retire the one it replaces so the
     # project list does not accumulate near-duplicate planning rows, then
@@ -498,6 +508,7 @@ async def handle_mention_or_dm(
     actor_record: PersonRecord | None = None,
     explain_uc: ExplainPlanUseCase | None = None,
     confirm_uc: ConfirmPlanUseCase | None = None,
+    task_sink: TaskSinkPort | None = None,
 ) -> None:
     """Handle @mention in groups and direct messages in private chats (spec 8.1).
 
@@ -525,5 +536,5 @@ async def handle_mention_or_dm(
     await _handle_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
-        confirm_uc=confirm_uc,
+        confirm_uc=confirm_uc, task_sink=task_sink,
     )

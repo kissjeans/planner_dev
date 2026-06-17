@@ -75,6 +75,14 @@ def build_dispatcher(
     from planner.infra.stt.faster_whisper import FasterWhisperSTT
     dp["stt"] = FasterWhisperSTT()
 
+    from planner.infra.notion.client import NotionTaskSink, NullTaskSink
+    sink = (
+        NotionTaskSink(settings.notion_token, settings.notion_database_id)
+        if settings.notion_token and settings.notion_database_id
+        else NullTaskSink()
+    )
+    dp["task_sink"] = sink
+
     errors_mw = ErrorBoundaryMiddleware()
     dp.message.middleware(errors_mw)
     dp.callback_query.middleware(errors_mw)

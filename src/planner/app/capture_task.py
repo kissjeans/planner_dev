@@ -9,8 +9,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from planner.app.ports import PersonRecord, ProjectRecord, RepoPort
+import structlog
+
+from planner.app.ports import (
+    PersonRecord,
+    ProjectRecord,
+    RepoPort,
+    SinkTask,
+    TaskSinkPort,
+)
 from planner.domain.intent import CaptureTaskIntent
+
+log = structlog.get_logger(__name__)
 
 INBOX_PROJECT = "Inbox"
 _CAPTURE_HOURS = 8
@@ -22,11 +32,13 @@ class CaptureResult:
     project_title: str
     assignee_names: list[str]
     deadline_iso: str | None
+    notion_url: str | None = None
 
 
 class CaptureTaskUseCase:
-    def __init__(self, repo: RepoPort) -> None:
+    def __init__(self, repo: RepoPort, sink: TaskSinkPort | None = None) -> None:
         self._repo = repo
+        self._sink = sink
 
     async def _resolve_project(
         self, name: str | None, actor: PersonRecord | None
@@ -76,9 +88,24 @@ class CaptureTaskUseCase:
                 "assignees": assignee_names,
             },
         )
+        notion_url: str | None = None
+        if self._sink is not None:
+            try:
+                notion_url = await self._sink.push_task(
+                    SinkTask(
+                        title=intent.task_title,
+                        assignees=assignee_names,
+                        project=project.title,
+                        deadline=intent.deadline,
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001 — Notion mirror is best-effort
+                log.warning("notion_mirror_failed", error=str(exc))
+
         return CaptureResult(
             task_title=intent.task_title,
             project_title=project.title,
             assignee_names=assignee_names,
             deadline_iso=intent.deadline.isoformat() if intent.deadline else None,
+            notion_url=notion_url,
         )

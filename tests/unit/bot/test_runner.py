@@ -92,6 +92,22 @@ def test_build_dispatcher_always_wires_stt(mock_redis_storage):
     assert "stt" in dp.workflow_data
 
 
+def test_build_dispatcher_wires_notion_sink_when_configured(mock_redis_storage):
+    from planner.infra.notion.client import NotionTaskSink
+
+    settings = _settings(notion_token="ntn_x", notion_database_id="db1")
+    dp = build_dispatcher(settings, BasicIntentParser())
+    assert isinstance(dp["task_sink"], NotionTaskSink)
+
+
+def test_build_dispatcher_wires_null_sink_when_unconfigured(mock_redis_storage):
+    from planner.infra.notion.client import NullTaskSink
+
+    settings = _settings(notion_token="", notion_database_id="")
+    dp = build_dispatcher(settings, BasicIntentParser())
+    assert isinstance(dp["task_sink"], NullTaskSink)
+
+
 @pytest.mark.asyncio
 async def test_set_bot_commands_registers_menu():
     """register_bot_commands sets the Telegram command menu (spec 8)."""
