@@ -16,7 +16,12 @@ from uuid import UUID
 from aiogram import F, Router
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import (
+    BufferedInputFile,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 
 from planner.app.add_project import (
     AddProjectUseCase,
@@ -30,6 +35,7 @@ from planner.app.confirm_plan import (
     PlanNotProposedError,
 )
 from planner.app.explain_plan import ExplainPlanUseCase
+from planner.app.load_summary import DEFAULT_DAYS
 from planner.app.ports import PersonRecord, RepoPort, TaskMeta, TaskSinkPort
 from planner.app.suggest_assignees import SuggestAssigneesUseCase
 from planner.bot.states import PlanEditState
@@ -369,6 +375,22 @@ async def _handle_text(
         if pv_id is not None and edit_state is not None:
             await edit_state.update_data(pending_pv_id=str(pv_id))
         return pv_id
+
+    if isinstance(intent, LoadIntent) and repo is not None:
+        from planner.bot.handlers.load import build_load_image
+
+        png = await build_load_image(
+            repo, start=date.today(), person_name=intent.person_name
+        )
+        who = intent.person_name or "вся команда"
+        if png is None:
+            await message.answer("В команде нет активных людей — нечего показывать.")
+            return None
+        await message.answer_photo(
+            BufferedInputFile(png, filename="load.png"),
+            caption=f"Загрузка ({who}) на {DEFAULT_DAYS} дней.",
+        )
+        return None
 
     await message.answer(describe_intent(intent))
     return None

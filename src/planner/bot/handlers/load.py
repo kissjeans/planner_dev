@@ -39,7 +39,7 @@ async def build_load_image(
         return None
 
     if person_name:
-        matched = [p for p in people if p.name == person_name]
+        matched = [p for p in people if p.name.casefold() == person_name.casefold()]
         if matched:
             people = matched
 

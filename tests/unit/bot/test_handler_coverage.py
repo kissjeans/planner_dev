@@ -792,8 +792,10 @@ async def test_handle_text_populates_context_from_repo():
     repo = SimpleNamespace(
         list_people=AsyncMock(return_value=[SimpleNamespace(id=uuid4(), name="Рай")]),
         list_projects=AsyncMock(return_value=[SimpleNamespace(id=uuid4(), title="МТС")]),
+        get_solver_people=AsyncMock(return_value=[]),
+        list_committed_plans=AsyncMock(return_value=[]),
     )
-    msg = SimpleNamespace(answer=AsyncMock())
+    msg = SimpleNamespace(answer=AsyncMock(), answer_photo=AsyncMock())
     await _handle_text(
         msg, "сколько слотов у Рая?", _Parser(), {"is_admin": True},
         repo=repo, actor_record=SimpleNamespace(id=uuid4(), name="Андрей"),
@@ -1128,3 +1130,32 @@ async def test_handle_edit_text_confirm_clears_state():
     assert repo.plan_versions[pv.id].status == "committed"
     assert state.clear.called
     assert not state.set_state.called  # confirm does NOT re-arm
+
+
+@pytest.mark.asyncio
+async def test_handle_text_load_intent_renders_photo():
+    """NL load query must render the heatmap photo, not just echo a text line."""
+    from planner.app.ports import PersonRecord
+    from planner.bot.handlers.task_router import _handle_text
+    from planner.domain.intent import LoadIntent
+
+    repo = SimpleNamespace(
+        list_people=AsyncMock(return_value=[SimpleNamespace(id=uuid4(), name="Андрей")]),
+        list_projects=AsyncMock(return_value=[]),
+        get_solver_people=AsyncMock(
+            return_value=[SimpleNamespace(id=uuid4(), name="Андрей", capacity_h=8)]
+        ),
+        list_committed_plans=AsyncMock(return_value=[]),
+    )
+    msg = SimpleNamespace(answer=AsyncMock(), answer_photo=AsyncMock())
+    actor_record = PersonRecord(id=uuid4(), name="Андрей", is_admin=True)
+    await _handle_text(
+        msg,  # type: ignore[arg-type]
+        "какая загрузка у команды?",
+        _FakeParser(LoadIntent(person_name=None)),
+        {"is_admin": True},
+        repo=repo,  # type: ignore[arg-type]
+        actor_record=actor_record,
+    )
+    assert msg.answer_photo.called, "load query must render a photo, not echo text"
+    assert not msg.answer.called
