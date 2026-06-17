@@ -88,6 +88,23 @@ async def _lite_request(repo: RepoPort) -> PlanRequest | None:
     )
 
 
+async def _is_committed_project(repo: RepoPort, title: str | None) -> bool:
+    """True when ``title`` names a project that has a committed plan.
+
+    Guards drop_project: without a real, committed target the operation would
+    drop the entire committed workload (apply_operation clears all tasks). Full
+    per-project scoping is a larger change (follow-up); this guard prevents the
+    destructive no-target case (spec 7.2 / Cluster 3).
+    """
+    name = (title or "").strip()
+    if not name:
+        return False
+    project = await repo.get_project_by_title(name)
+    if project is None:
+        return False
+    return await repo.get_committed_plan(project.id) is not None
+
+
 @router.message(Command("whatif"))
 async def handle_whatif(
     message: Message,
@@ -112,6 +129,14 @@ async def handle_whatif(
             target = intent.project_title or "—"
             if intent.operation == "switch_to_lite":
                 await _answer_switch_to_lite(message, repo, solver, base_req, target)
+                return
+            if intent.operation == "drop_project" and not await _is_committed_project(
+                repo, intent.project_title
+            ):
+                await message.answer(
+                    "Укажи проект для удаления, например: "
+                    "/whatif удали проект «Альфа»."
+                )
                 return
             diff = WhatIfUseCase(solver).execute(base_req, intent)
             summary = explain_diff(diff, {}, {})

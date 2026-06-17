@@ -468,3 +468,86 @@ async def test_whatif_switch_to_lite_missing_template_friendly_message():
     )
 
     assert "не могу сопоставить lite-шаблон" in answers.calls[0].lower()
+
+
+# ---------------------------------------------------------------------------
+# /whatif drop_project guard (must not silently drop the whole workload)
+# ---------------------------------------------------------------------------
+
+class _WhatIfDropRepo(_WhatIfLiteRepo):
+    """Adds title/committed-plan lookups so drop_project can be scoped."""
+
+    def __init__(self, *, committed_title: str | None = None) -> None:
+        super().__init__(lite_template=None, n_committed_tasks=2)
+        self._committed_title = committed_title
+
+    async def get_project_by_title(self, title: str) -> Any:
+        from planner.app.ports import ProjectRecord
+
+        if self._committed_title and title.casefold() == self._committed_title.casefold():
+            return ProjectRecord(uuid4(), self._committed_title, "active")
+        return None
+
+    async def get_committed_plan(self, project_id: Any) -> Any:
+        from planner.app.ports import PlanVersionRecord
+
+        return PlanVersionRecord(uuid4(), project_id, "committed", {})
+
+
+@pytest.mark.asyncio
+async def test_whatif_drop_project_empty_title_is_guarded():
+    from planner.domain.calendar.rules import WeekendCalendar
+    from planner.domain.solver.greedy import GreedySolver
+
+    repo = _WhatIfDropRepo(committed_title="Альфа")
+    solver = GreedySolver(WeekendCalendar())
+    intent = WhatIfIntent(operation="drop_project", project_title=None)
+    msg, answers = _message("/whatif удали проект")
+    parser = _FakeParser(intent)
+
+    await whatif.handle_whatif(
+        msg, parser, {"is_admin": True},  # type: ignore[arg-type]
+        repo=repo, solver=solver,  # type: ignore[arg-type]
+    )
+
+    assert "укажи проект для удаления" in answers.calls[0].lower()
+
+
+@pytest.mark.asyncio
+async def test_whatif_drop_project_unknown_title_is_guarded():
+    from planner.domain.calendar.rules import WeekendCalendar
+    from planner.domain.solver.greedy import GreedySolver
+
+    repo = _WhatIfDropRepo(committed_title="Альфа")
+    solver = GreedySolver(WeekendCalendar())
+    intent = WhatIfIntent(operation="drop_project", project_title="Бета")
+    msg, answers = _message("/whatif удали проект Бета")
+    parser = _FakeParser(intent)
+
+    await whatif.handle_whatif(
+        msg, parser, {"is_admin": True},  # type: ignore[arg-type]
+        repo=repo, solver=solver,  # type: ignore[arg-type]
+    )
+
+    assert "укажи проект для удаления" in answers.calls[0].lower()
+
+
+@pytest.mark.asyncio
+async def test_whatif_drop_project_matching_committed_runs_diff():
+    # A real, committed target passes the guard and produces a normal diff.
+    from planner.domain.calendar.rules import WeekendCalendar
+    from planner.domain.solver.greedy import GreedySolver
+
+    repo = _WhatIfDropRepo(committed_title="Альфа")
+    solver = GreedySolver(WeekendCalendar())
+    intent = WhatIfIntent(operation="drop_project", project_title="Альфа")
+    msg, answers = _message("/whatif удали проект Альфа")
+    parser = _FakeParser(intent)
+
+    await whatif.handle_whatif(
+        msg, parser, {"is_admin": True},  # type: ignore[arg-type]
+        repo=repo, solver=solver,  # type: ignore[arg-type]
+    )
+
+    assert "укажи проект для удаления" not in answers.calls[0].lower()
+    assert "drop_project" in answers.calls[0].lower()
