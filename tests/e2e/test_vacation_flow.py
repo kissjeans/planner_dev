@@ -43,7 +43,7 @@ def repo_with_aigul():
 async def test_vacation_inserts_day_overrides(repo_with_aigul):
     """Scenario E: vacation for Айгуль 10–12 June creates 3 day_overrides."""
     repo, person_id = repo_with_aigul
-    actor = PersonRecord(id=uuid4(), name="Admin", is_admin=True)
+    actor_id = uuid4()
 
     intent = VacationIntent(
         person_name="Айгуль",
@@ -53,7 +53,7 @@ async def test_vacation_inserts_day_overrides(repo_with_aigul):
     )
 
     uc = SetVacationUseCase(repo)
-    count = await uc.execute(intent, actor)
+    count = await uc.execute(intent, actor_id, is_admin=True)
 
     assert count == 3
     assert len(repo.overrides) == 3
@@ -65,7 +65,7 @@ async def test_vacation_inserts_day_overrides(repo_with_aigul):
 @pytest.mark.asyncio
 async def test_vacation_half_day_sets_capacity_4(repo_with_aigul):
     repo, _ = repo_with_aigul
-    actor = PersonRecord(id=uuid4(), name="Admin", is_admin=True)
+    actor_id = uuid4()
 
     intent = VacationIntent(
         person_name="Айгуль",
@@ -74,7 +74,7 @@ async def test_vacation_half_day_sets_capacity_4(repo_with_aigul):
         capacity_h=4,
     )
     uc = SetVacationUseCase(repo)
-    count = await uc.execute(intent, actor)
+    count = await uc.execute(intent, actor_id, is_admin=True)
     assert count == 1
     assert repo.overrides[0][2] == 4
 
@@ -82,7 +82,6 @@ async def test_vacation_half_day_sets_capacity_4(repo_with_aigul):
 @pytest.mark.asyncio
 async def test_vacation_person_not_found_raises():
     repo = FakeRepo()  # empty — no people
-    actor = PersonRecord(id=uuid4(), name="Admin", is_admin=True)
     intent = VacationIntent(
         person_name="Незнакомец",
         day_from=date(2026, 6, 1),
@@ -90,14 +89,13 @@ async def test_vacation_person_not_found_raises():
     )
     uc = SetVacationUseCase(repo)
     with pytest.raises(PersonNotFoundError):
-        await uc.execute(intent, actor)
+        await uc.execute(intent, uuid4(), is_admin=True)
 
 
 @pytest.mark.asyncio
 async def test_vacation_non_admin_raises(repo_with_aigul):
     repo, _ = repo_with_aigul
     # actor is NOT admin
-    actor = PersonRecord(id=uuid4(), name="Member", is_admin=False)
     intent = VacationIntent(
         person_name="Айгуль",
         day_from=date(2026, 6, 1),
@@ -105,19 +103,19 @@ async def test_vacation_non_admin_raises(repo_with_aigul):
     )
     uc = SetVacationUseCase(repo)
     with pytest.raises(PermissionError):
-        await uc.execute(intent, actor)
+        await uc.execute(intent, uuid4(), is_admin=False)
 
 
 @pytest.mark.asyncio
 async def test_vacation_audit_recorded(repo_with_aigul):
     repo, _ = repo_with_aigul
-    actor = PersonRecord(id=uuid4(), name="Admin", is_admin=True)
+    actor_id = uuid4()
     intent = VacationIntent(
         person_name="Айгуль",
         day_from=date(2026, 6, 20),
         day_to=date(2026, 6, 20),
     )
     uc = SetVacationUseCase(repo)
-    await uc.execute(intent, actor)
+    await uc.execute(intent, actor_id, is_admin=True)
     assert len(repo.audits) == 1
     assert repo.audits[0][0] == "set_vacation"

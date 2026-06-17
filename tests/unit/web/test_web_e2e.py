@@ -394,10 +394,11 @@ def test_telegram_login_invalid_signature_returns_401(client):
     assert r.status_code == 401
 
 
-def test_vacation_with_invalid_uuid_sub_still_works(client):
-    """_actor falls back to uuid4() when JWT sub is not a valid UUID."""
-    token = __import__("planner.web.auth", fromlist=["create_jwt"]).create_jwt(
-        {"sub": "not-a-uuid", "name": "Admin", "is_admin": True}, JWT_SECRET
+def test_vacation_non_uuid_sub_records_null_actor(client):
+    """A dev-login / admin-without-Person (sub not a real Person UUID) must be
+    able to record a vacation; the audit actor_id is NULL, never a forged uuid."""
+    token = create_jwt(
+        {"sub": "dev", "name": "Admin", "is_admin": True}, JWT_SECRET
     )
     client.cookies.set(COOKIE_NAME, token)
     r = client.post(
@@ -407,6 +408,8 @@ def test_vacation_with_invalid_uuid_sub_still_works(client):
         follow_redirects=False,
     )
     assert r.status_code == 303
+    recorded_actor = client.repo.audits[0][0]  # type: ignore[attr-defined]
+    assert recorded_actor is None
 
 
 def test_telegram_login_callback_sets_cookie(client):

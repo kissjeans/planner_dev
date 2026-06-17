@@ -7,8 +7,9 @@ a replan. Admin-gated and audited.
 from __future__ import annotations
 
 from datetime import timedelta
+from uuid import UUID
 
-from planner.app.ports import PersonRecord, RepoPort
+from planner.app.ports import RepoPort
 from planner.domain.intent import VacationIntent
 
 
@@ -20,8 +21,10 @@ class SetVacationUseCase:
     def __init__(self, repo: RepoPort) -> None:
         self._repo = repo
 
-    async def execute(self, intent: VacationIntent, actor: PersonRecord) -> int:
-        if not actor.is_admin:
+    async def execute(
+        self, intent: VacationIntent, actor_id: UUID | None, *, is_admin: bool
+    ) -> int:
+        if not is_admin:
             raise PermissionError("Только админ может оформлять отпуск.")
 
         person = await self._repo.get_person_by_name(intent.person_name)
@@ -38,7 +41,7 @@ class SetVacationUseCase:
             day += timedelta(days=1)
 
         await self._repo.add_audit(
-            actor.id,
+            actor_id,
             "set_vacation",
             "day_override",
             person.id,

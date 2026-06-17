@@ -53,7 +53,9 @@ async def handle_vacation(
 
     uc = SetVacationUseCase(repo)
     try:
-        count = await uc.execute(intent, actor_record)
+        count = await uc.execute(
+            intent, actor_record.id, is_admin=actor.get("is_admin", False)
+        )
     except PermissionError as exc:
         await message.answer(str(exc))
         return

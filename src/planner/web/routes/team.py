@@ -4,29 +4,17 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Any
-from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Form, Request, Response, status
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 
 from planner.app.errors import user_message
-from planner.app.ports import PersonRecord, RepoPort
+from planner.app.ports import RepoPort
 from planner.app.set_vacation import PersonNotFoundError, SetVacationUseCase
 from planner.domain.intent import VacationIntent
-from planner.web.deps import current_user, get_repo, require_admin
+from planner.web.deps import actor_id_from, current_user, get_repo, require_admin
 
 router = APIRouter()
-
-
-def _actor(user: dict[str, Any]) -> PersonRecord:
-    sub = user.get("sub", "")
-    try:
-        pid = UUID(sub)
-    except (ValueError, TypeError):
-        pid = uuid4()
-    return PersonRecord(
-        id=pid, name=user.get("name", "—"), is_admin=bool(user.get("is_admin", False))
-    )
 
 
 @router.get("/team", response_class=HTMLResponse)
@@ -63,7 +51,14 @@ async def add_vacation(
         capacity_h=capacity_h,
     )
     try:
-        await SetVacationUseCase(repo).execute(intent, _actor(user))
+        # actor_id is None for a dev-login / admin-without-Person subject; the
+        # audit_log.actor_id FK is nullable, so NULL is recorded rather than a
+        # forged random uuid that would violate the FK to people.id.
+        await SetVacationUseCase(repo).execute(
+            intent,
+            actor_id_from(user),
+            is_admin=bool(user.get("is_admin", False)),
+        )
     except PersonNotFoundError as exc:
         return PlainTextResponse(user_message(exc), status_code=404)
     return RedirectResponse("/team", status_code=status.HTTP_303_SEE_OTHER)
