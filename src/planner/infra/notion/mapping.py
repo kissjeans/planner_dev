@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from planner.app.ports import SinkTask
 
@@ -11,19 +12,21 @@ _PROJECT_RE = re.compile(r"проект|project|клиент", re.IGNORECASE)
 _ASSIGNEE_RE = re.compile(r"исполнит|assignee|кому|ответствен", re.IGNORECASE)
 
 
-def _rich_text(value: str) -> dict:
+def _rich_text(value: str) -> dict[str, Any]:
     return {"rich_text": [{"text": {"content": value}}]}
 
 
-def _find(schema: dict, pattern: re.Pattern, types: tuple[str, ...]) -> str | None:
+def _find(
+    schema: dict[str, Any], pattern: re.Pattern[str], types: tuple[str, ...]
+) -> str | None:
     for name, meta in schema.items():
         if meta.get("type") in types and pattern.search(name):
             return name
     return None
 
 
-def build_properties(schema: dict, task: SinkTask) -> dict:
-    props: dict = {}
+def build_properties(schema: dict[str, Any], task: SinkTask) -> dict[str, Any]:
+    props: dict[str, Any] = {}
 
     title_name = next(
         (n for n, m in schema.items() if m.get("type") == "title"), None

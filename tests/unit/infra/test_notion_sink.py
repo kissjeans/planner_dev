@@ -1,4 +1,5 @@
 import pytest
+
 from planner.app.ports import SinkTask
 
 
@@ -12,8 +13,9 @@ async def test_null_sink_returns_none():
 
 
 def test_mapping_sets_title_and_date():
-    from planner.infra.notion.mapping import build_properties
     from datetime import date
+
+    from planner.infra.notion.mapping import build_properties
     schema = {
         "Задача": {"type": "title"},
         "Дедлайн": {"type": "date"},

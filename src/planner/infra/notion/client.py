@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 import structlog
 
@@ -26,9 +28,9 @@ class NotionTaskSink:
     def __init__(self, token: str, database_id: str) -> None:
         self._token = token
         self._db = database_id
-        self._schema: dict | None = None
+        self._schema: dict[str, Any] | None = None
 
-    def _headers(self) -> dict:
+    def _headers(self) -> dict[str, str]:
         return {
             "Authorization": f"Bearer {self._token}",
             "Notion-Version": _VERSION,
@@ -49,7 +51,8 @@ class NotionTaskSink:
                     json={"parent": {"database_id": self._db}, "properties": props},
                 )
                 r.raise_for_status()
-                return r.json().get("url")
+                url: str | None = r.json().get("url")
+                return url
         except Exception as exc:  # noqa: BLE001 — Notion is a best-effort mirror
             log.warning("notion_push_failed", error=str(exc))
             self._schema = None  # force re-fetch next time
