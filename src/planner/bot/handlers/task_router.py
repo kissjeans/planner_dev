@@ -31,6 +31,7 @@ from planner.app.confirm_plan import (
 )
 from planner.app.explain_plan import ExplainPlanUseCase
 from planner.app.ports import PersonRecord, RepoPort, TaskMeta
+from planner.app.suggest_assignees import SuggestAssigneesUseCase
 from planner.bot.states import PlanEditState
 from planner.domain.intent import (
     AddProjectIntent,
@@ -162,13 +163,21 @@ async def build_assign_reply(
     return f"Назначил «{task.task_name}» на {person.name}."
 
 
+_MAX_SUGGESTED = 3
+
+
 async def build_capture_reply(
     intent: CaptureTaskIntent,
     *,
     repo: RepoPort,
     actor_record: PersonRecord | None,
 ) -> str:
-    """Capture the task into the DB and return a confirmation line."""
+    """Capture the task into the DB and return a confirmation line.
+
+    When nobody is named but the LLM inferred required skills, append a
+    *suggestion* of who could take it (spec section 5). This never auto-assigns
+    — a named assignee leaves the flow unchanged.
+    """
     result = await CaptureTaskUseCase(repo).execute(intent, actor_record)
     lines = [
         "✓ Записал",
@@ -177,7 +186,23 @@ async def build_capture_reply(
         f"  кому: {', '.join(result.assignee_names) or '—'}",
         f"  дедлайн: {result.deadline_iso or '—'}",
     ]
+    hint = await _suggestion_hint(intent, repo=repo)
+    if hint is not None:
+        lines.append(hint)
     return "\n".join(lines)
+
+
+async def _suggestion_hint(
+    intent: CaptureTaskIntent, *, repo: RepoPort
+) -> str | None:
+    """Build a «Предлагаю: …» line, or None when there is nothing to suggest."""
+    if intent.assignee_names or not intent.required_skills:
+        return None
+    suggestions = await SuggestAssigneesUseCase(repo).execute(intent.required_skills)
+    names = [s.name for s in suggestions if s.coverage > 0][:_MAX_SUGGESTED]
+    if not names:
+        return None
+    return f"  предлагаю: {', '.join(names)}"
 
 
 def describe_intent(intent: Intent) -> str:

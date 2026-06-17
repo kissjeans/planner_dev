@@ -139,6 +139,9 @@ class BasicIntentParser:
                 task_title=text.strip(),
                 assignee_names=[person] if person else [],
                 deadline=_parse_date(text, ctx.today),
+                # Offline fallback does no enrichment inference (too unreliable).
+                est_hours=None,
+                required_skills=[],
             )
         return ClarifyIntent(
             question=(

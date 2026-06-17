@@ -98,7 +98,8 @@ class _FakeRepo:
         from planner.app.ports import ProjectRecord
         return ProjectRecord(project_id or uuid4(), title, "planning", deadline)
 
-    async def create_task(self, *, project_id, name, duration_hours, deadline, actor_id):
+    async def create_task(self, *, project_id, name, duration_hours, deadline, actor_id,
+                          required_skills=None):
         from planner.app.ports import TaskRecord
         self.captured_tasks.append(name)
         return TaskRecord(id=uuid4(), name=name, status="not_done",
