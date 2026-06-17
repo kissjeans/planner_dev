@@ -53,6 +53,7 @@ from planner.domain.intent import (
 from planner.domain.models import DayAllocation
 from planner.domain.permissions import can_execute
 from planner.domain.solver.ports import SolverPort
+from planner.infra.history import ChatHistory
 from planner.infra.llm.ports import ChatContext, IntentParserPort
 from planner.infra.stt.ports import STTPort
 
@@ -280,6 +281,7 @@ async def _handle_text(
     last_pv_id: UUID | None = None,
     edit_state: FSMContext | None = None,
     task_sink: TaskSinkPort | None = None,
+    history: ChatHistory | None = None,
 ) -> UUID | None:
     # Known-sender gate (spec 16 + QA H1/H2): only resolved team members or
     # admins may have their messages parsed/acted on. This blocks strangers
@@ -297,10 +299,18 @@ async def _handle_text(
     if repo is not None:
         known_people = tuple(p.name for p in await repo.list_people())
         known_projects = tuple(pr.title for pr in await repo.list_projects())
+    # Short-term per-chat history lets the parser resolve follow-up references
+    # («тогда ставь на Андрея», «на него»). Capture recent BEFORE recording the
+    # current message so it is not part of its own context.
+    recent: tuple[str, ...] = ()
+    if history is not None and message.chat is not None:
+        recent = history.recent(message.chat.id)
+        history.record(message.chat.id, text)
     ctx = ChatContext(
         today=date.today(),
         known_people=known_people,
         known_projects=known_projects,
+        recent_messages=recent,
     )
     intent = await parser.parse(text, ctx)
 
@@ -409,6 +419,7 @@ async def handle_voice(
     confirm_uc: ConfirmPlanUseCase | None = None,
     task_sink: TaskSinkPort | None = None,
     state: FSMContext | None = None,
+    history: ChatHistory | None = None,
 ) -> None:
     if stt is None or message.voice is None or message.bot is None:
         await message.answer("Голосовые сообщения не поддерживаются — напиши текстом.")
@@ -445,7 +456,7 @@ async def handle_voice(
     await _handle_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
-        confirm_uc=confirm_uc, edit_state=state, task_sink=task_sink,
+        confirm_uc=confirm_uc, edit_state=state, task_sink=task_sink, history=history,
     )
 
 
@@ -461,6 +472,7 @@ async def handle_task(
     confirm_uc: ConfirmPlanUseCase | None = None,
     task_sink: TaskSinkPort | None = None,
     state: FSMContext | None = None,
+    history: ChatHistory | None = None,
 ) -> None:
     text = (message.text or "").partition(" ")[2].strip()
     if not text:
@@ -469,7 +481,7 @@ async def handle_task(
     await _handle_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
-        confirm_uc=confirm_uc, edit_state=state, task_sink=task_sink,
+        confirm_uc=confirm_uc, edit_state=state, task_sink=task_sink, history=history,
     )
 
 
@@ -485,6 +497,7 @@ async def handle_edit_text(
     explain_uc: ExplainPlanUseCase | None = None,
     confirm_uc: ConfirmPlanUseCase | None = None,
     task_sink: TaskSinkPort | None = None,
+    history: ChatHistory | None = None,
 ) -> None:
     """FSM edit loop (spec flow step 14 / scenario J).
 
@@ -506,7 +519,7 @@ async def handle_edit_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
         confirm_uc=confirm_uc, last_pv_id=old_pv_id, edit_state=state,
-        task_sink=task_sink,
+        task_sink=task_sink, history=history,
     )
     # The edit produced a fresh proposal: retire the one it replaces so the
     # project list does not accumulate near-duplicate planning rows, then
@@ -544,6 +557,7 @@ async def handle_mention_or_dm(
     confirm_uc: ConfirmPlanUseCase | None = None,
     task_sink: TaskSinkPort | None = None,
     state: FSMContext | None = None,
+    history: ChatHistory | None = None,
 ) -> None:
     """Handle @mention in groups and direct messages in private chats (spec 8.1).
 
@@ -571,5 +585,5 @@ async def handle_mention_or_dm(
     await _handle_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
-        confirm_uc=confirm_uc, edit_state=state, task_sink=task_sink,
+        confirm_uc=confirm_uc, edit_state=state, task_sink=task_sink, history=history,
     )

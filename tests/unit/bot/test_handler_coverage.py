@@ -43,9 +43,11 @@ class _Answers:
         self.photos.append((photo, caption))
 
 
-def _message(text: str = "", chat_type: str = "private") -> tuple[SimpleNamespace, _Answers]:
+def _message(
+    text: str = "", chat_type: str = "private", chat_id: int = 42
+) -> tuple[SimpleNamespace, _Answers]:
     answers = _Answers()
-    chat = SimpleNamespace(type=chat_type)
+    chat = SimpleNamespace(type=chat_type, id=chat_id)
     msg = SimpleNamespace(
         text=text,
         answer=answers.answer,
@@ -802,6 +804,60 @@ async def test_handle_text_populates_context_from_repo():
     )
     assert "Рай" in captured["ctx"].known_people
     assert "МТС" in captured["ctx"].known_projects
+
+
+@pytest.mark.asyncio
+async def test_handle_text_passes_recent_messages_from_history():
+    """A prior recorded turn must reach the parser via ctx.recent_messages,
+    and the current message must be recorded for the next turn."""
+    from planner.app.ports import PersonRecord
+    from planner.bot.handlers.task_router import _handle_text
+    from planner.infra.history import ChatHistory
+
+    captured: dict[str, Any] = {}
+
+    class _Parser:
+        async def parse(self, text: str, ctx: Any) -> Any:
+            captured["ctx"] = ctx
+            return ClarifyIntent(question="Не понял.")
+
+    history = ChatHistory()
+    history.record(42, "поставь задачу на МТС")  # earlier turn in this chat
+
+    msg, _ = _message("тогда ставь на Андрея", chat_id=42)
+    repo = _FakeRepo()
+    actor_record = PersonRecord(id=uuid4(), name="Андрей", is_admin=True)
+    await _handle_text(
+        msg, "тогда ставь на Андрея", _Parser(), {"is_admin": True},  # type: ignore[arg-type]
+        repo=repo, actor_record=actor_record, history=history,  # type: ignore[arg-type]
+    )
+    # (a) the prior turn reached the parser
+    assert captured["ctx"].recent_messages == ("поставь задачу на МТС",)
+    # (b) the current message was recorded (after capturing recent), so it is
+    # available to the *next* turn but absent from its own context.
+    assert history.recent(42) == ("поставь задачу на МТС", "тогда ставь на Андрея")
+
+
+@pytest.mark.asyncio
+async def test_handle_text_without_history_passes_empty_recent():
+    """history=None (existing call sites) leaves recent_messages empty."""
+    from planner.app.ports import PersonRecord
+    from planner.bot.handlers.task_router import _handle_text
+
+    captured: dict[str, Any] = {}
+
+    class _Parser:
+        async def parse(self, text: str, ctx: Any) -> Any:
+            captured["ctx"] = ctx
+            return ClarifyIntent(question="Не понял.")
+
+    msg, _ = _message("привет")
+    actor_record = PersonRecord(id=uuid4(), name="Андрей", is_admin=True)
+    await _handle_text(
+        msg, "привет", _Parser(), {"is_admin": True},  # type: ignore[arg-type]
+        repo=_FakeRepo(), actor_record=actor_record, history=None,  # type: ignore[arg-type]
+    )
+    assert captured["ctx"].recent_messages == ()
 
 
 @pytest.mark.asyncio

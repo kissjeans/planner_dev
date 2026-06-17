@@ -44,6 +44,10 @@ INTENT_SYSTEM_PROMPT = """\
 - Резолвь имена по таблице алиасов из контекста.
 - Резолвь относительные даты («к среде», «завтра», «через неделю») от today, RU.
 - Никогда не выдумывай deadline — если не назван, оставь null.
+- Учитывай «недавние сообщения» для разрешения ссылок на ранее обсуждённое
+  («эту задачу», «на него», «тогда ставь задачу на X» = задача/проект из недавнего
+  обсуждения). Если сама задача названа только в истории — собери capture_task,
+  взяв содержание задачи из недавних сообщений.
 """
 
 EXPLAIN_SYSTEM_PROMPT = """\
@@ -56,10 +60,12 @@ def build_user_message(text: str, ctx: ChatContext) -> str:
     aliases = ", ".join(f"{a}->{c}" for a, c in ctx.aliases.items()) or "—"
     people = ", ".join(ctx.known_people) or "—"
     projects = ", ".join(ctx.known_projects) or "—"
+    recent = "\n".join(ctx.recent_messages) or "—"
     return (
         f"today={ctx.today.isoformat()}\n"
         f"люди: {people}\n"
         f"алиасы: {aliases}\n"
         f"проекты: {projects}\n"
+        f"недавние сообщения:\n{recent}\n"
         f"---\n{text}"
     )

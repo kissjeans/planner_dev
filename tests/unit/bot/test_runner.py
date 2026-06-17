@@ -92,6 +92,15 @@ def test_build_dispatcher_always_wires_stt(mock_redis_storage):
     assert "stt" in dp.workflow_data
 
 
+def test_build_dispatcher_wires_chat_history(mock_redis_storage):
+    """dp['history'] must be a ChatHistory so aiogram injects it by name."""
+    from planner.infra.history import ChatHistory
+
+    settings = _settings()
+    dp = build_dispatcher(settings, BasicIntentParser())
+    assert isinstance(dp["history"], ChatHistory)
+
+
 def test_build_dispatcher_wires_notion_sink_when_configured(mock_redis_storage):
     from planner.infra.notion.client import NotionTaskSink
 

@@ -50,6 +50,19 @@ def test_build_user_message_empty_context():
     assert "—" in msg  # empty people/aliases/projects render as dash
 
 
+def test_build_user_message_includes_recent_messages():
+    ctx = ChatContext(
+        today=date(2026, 6, 5),
+        recent_messages=("надо сделать КП по МТС", "это срочно"),
+    )
+    msg = build_user_message("тогда ставь задачу на Андрея", ctx)
+    assert "недавние сообщения" in msg
+    assert "надо сделать КП по МТС" in msg
+    assert "это срочно" in msg
+    # recent block precedes the separator that introduces the new message
+    assert msg.index("недавние сообщения") < msg.index("---")
+
+
 # ---------------------------------------------------------------------------
 # ClaudeIntentParser — __init__ constructor (lines 29-34)
 # ---------------------------------------------------------------------------

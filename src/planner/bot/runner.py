@@ -75,6 +75,9 @@ def build_dispatcher(
     from planner.infra.stt.faster_whisper import FasterWhisperSTT
     dp["stt"] = FasterWhisperSTT()
 
+    from planner.infra.history import ChatHistory
+    dp["history"] = ChatHistory()
+
     from planner.infra.notion.client import NotionTaskSink, NullTaskSink
     sink = (
         NotionTaskSink(settings.notion_token, settings.notion_database_id)
