@@ -560,6 +560,12 @@ class SqlAlchemyRepo:
                         required_skills=list(t.required_skills),
                     )
                 )
+            # Tasks must hit the DB before their assignments: assignments.task_id
+            # has a FK -> tasks.id, and the interleaved add() order is not a
+            # guaranteed INSERT order. Flush the tasks first.
+            await s.flush()
+            for t in tasks:
+                a = by_task.get(t.id)
                 if a is not None:
                     s.add(
                         Assignment(
