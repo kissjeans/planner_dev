@@ -33,17 +33,23 @@ services:
 
   app:
     build: .
+    restart: unless-stopped
     env_file: .env
+    ports:
+      - "8000:8000"          # FastAPI admin board
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - whisper_cache:/root/.cache    # persist faster-whisper model across restarts
     networks:
       - planner-network
 
 volumes:
   postgres_data:
+  whisper_cache:
 
 networks:
   planner-network:
