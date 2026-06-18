@@ -35,11 +35,14 @@ from planner.infra.llm.tools import TOOL_SCHEMAS, ToolBox
 
 log = structlog.get_logger(__name__)
 
-# Same model id as ClaudeIntentParser — one place to change.
-_MODEL = "claude-haiku-4-5-20251001"
-_TIMEOUT_S = 30.0  # tool loops take several round-trips; allow more than classify
+# Sonnet for the agentic loop: multi-step tool-use chains (read→reason→write,
+# decompose, clarify) overwhelm Haiku, which stalls into the iteration cap and
+# makes spurious duplicate captures. Classification (ClaudeIntentParser) can stay
+# on Haiku; orchestration needs the stronger model.
+_MODEL = "claude-sonnet-4-6"
+_TIMEOUT_S = 45.0  # tool loops take several round-trips; allow more than classify
 _MAX_RETRIES = 3
-_MAX_ITERS = 6
+_MAX_ITERS = 10
 _MAX_TOKENS = 1024
 _TEMPERATURE = 0
 _CAP_MESSAGE = "Не успел обработать — переформулируй короче."
@@ -51,6 +54,15 @@ class AgentReply:
 
     text: str
     proposed_pv_id: UUID | None = None
+    # Notion links of tasks captured this turn; the bot appends them because the
+    # model drops links when it paraphrases tool output.
+    notion_urls: tuple[str, ...] = ()
+    # Partial task args when capture needs a missing key field; the bot renders
+    # the clarify buttons instead of showing the model's text.
+    clarify: dict[str, Any] | None = None
+    # Deterministic capture confirmations; when present the bot shows these
+    # verbatim instead of the model's narration (clean layout, one-task merges).
+    captured_replies: tuple[str, ...] = ()
 
 
 def _build_context_block(ctx: ChatContext) -> str:
@@ -111,6 +123,9 @@ class PlannerAgent:
                 return AgentReply(
                     text=_final_text(resp),
                     proposed_pv_id=toolbox.last_proposed_pv_id,
+                    notion_urls=tuple(toolbox.captured_notion_urls),
+                    clarify=toolbox.pending_capture,
+                    captured_replies=tuple(toolbox.captured_replies),
                 )
             messages.append({"role": "assistant", "content": resp.content})
             results = []
@@ -127,7 +142,11 @@ class PlannerAgent:
                     )
             messages.append({"role": "user", "content": results})
         return AgentReply(
-            text=_CAP_MESSAGE, proposed_pv_id=toolbox.last_proposed_pv_id
+            text=_CAP_MESSAGE,
+            proposed_pv_id=toolbox.last_proposed_pv_id,
+            notion_urls=tuple(toolbox.captured_notion_urls),
+            clarify=toolbox.pending_capture,
+            captured_replies=tuple(toolbox.captured_replies),
         )
 
     def _fallback_text(self, text: str, ctx: ChatContext) -> str:

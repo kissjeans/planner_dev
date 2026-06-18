@@ -57,6 +57,9 @@ def _toolbox(execute_return: str = "Команда: • Андрей") -> MagicM
     tb = MagicMock()
     tb.execute = AsyncMock(return_value=execute_return)
     tb.last_proposed_pv_id = None
+    tb.captured_notion_urls = []
+    tb.pending_capture = None
+    tb.captured_replies = []
     return tb
 
 
@@ -157,6 +160,42 @@ async def test_proposed_pv_id_propagated():
     reply = await agent.run("распланируй Бету", _ctx(), tb)
 
     assert reply.proposed_pv_id == pv
+
+
+@pytest.mark.asyncio
+async def test_notion_urls_propagated():
+    """Captured Notion links ride out on AgentReply (the bot appends them)."""
+    agent = _make_agent()
+    agent._client.messages.create = AsyncMock(
+        side_effect=[
+            _tool_use_resp("capture_task", {"title": "КП", "project": "МТС"}),
+            _text_resp("Готово."),
+        ]
+    )
+    tb = _toolbox(execute_return="✓ Записал")
+    tb.captured_notion_urls = ["https://notion.so/abc"]
+
+    reply = await agent.run("поставь задачу КП по МТС", _ctx(), tb)
+
+    assert reply.notion_urls == ("https://notion.so/abc",)
+
+
+@pytest.mark.asyncio
+async def test_clarify_propagated():
+    """A pending capture (missing key field) rides out on AgentReply.clarify."""
+    agent = _make_agent()
+    agent._client.messages.create = AsyncMock(
+        side_effect=[
+            _tool_use_resp("capture_task", {"title": "КП"}),
+            _text_resp("Уточняю поля."),
+        ]
+    )
+    tb = _toolbox(execute_return="поля запрошены кнопками")
+    tb.pending_capture = {"title": "КП", "project": "", "assignees": [], "deadline": None}
+
+    reply = await agent.run("поставь задачу КП", _ctx(), tb)
+
+    assert reply.clarify == tb.pending_capture
 
 
 @pytest.mark.asyncio

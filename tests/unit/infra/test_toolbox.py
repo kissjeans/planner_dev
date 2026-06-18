@@ -312,14 +312,77 @@ async def test_write_tools_blocked_for_non_admin(name, args):
 # --- Write tools (admin) --------------------------------------------------
 
 
+_FULL_TASK = {
+    "title": "добрифовать МТС",
+    "assignees": ["Андрей"],
+    "project": "МТС",
+    "deadline": "2026-06-20",
+}
+
+
 @pytest.mark.asyncio
 async def test_capture_task_dispatches_and_returns_string():
     repo = FakeRepo()
-    out = await _box(repo, actor=_ADMIN).execute(
-        "capture_task", {"title": "добрифовать МТС"}
-    )
+    out = await _box(repo, actor=_ADMIN).execute("capture_task", dict(_FULL_TASK))
     assert isinstance(out, str)
     assert repo.created_tasks and repo.created_tasks[0]["name"] == "добрифовать МТС"
+
+
+@pytest.mark.asyncio
+async def test_capture_task_missing_key_fields_signals_clarify_and_skips_write():
+    """Missing key field → stash partial args for the button clarify; never write."""
+    repo = FakeRepo()
+    box = _box(repo, actor=_ADMIN)
+    await box.execute("capture_task", {"title": "добрифовать МТС"})
+    assert box.pending_capture is not None
+    assert box.pending_capture["title"] == "добрифовать МТС"
+    assert box.pending_capture["project"] == "" and box.pending_capture["assignees"] == []
+    assert box.pending_capture["deadline"] is None
+    assert repo.created_tasks == []
+    assert box.captured_notion_urls == []
+
+
+@pytest.mark.asyncio
+async def test_capture_task_partial_args_preserved_for_clarify():
+    """Only deadline missing → known fields ride along in pending_capture."""
+    repo = FakeRepo()
+    box = _box(repo, actor=_ADMIN)
+    await box.execute(
+        "capture_task", {"title": "КП", "assignees": ["Андрей"], "project": "МТС"}
+    )
+    assert box.pending_capture is not None
+    assert box.pending_capture["project"] == "МТС"
+    assert box.pending_capture["assignees"] == ["Андрей"]
+    assert box.pending_capture["deadline"] is None
+    assert repo.created_tasks == []
+
+
+@pytest.mark.asyncio
+async def test_capture_task_records_notion_url():
+    """A successful Notion push is stashed for the bot to surface deterministically."""
+    class _Sink:
+        async def push_task(self, task):
+            return "https://notion.so/page-1"
+
+    repo = FakeRepo()
+    box = _box(repo, actor=_ADMIN, sink=_Sink())
+    await box.execute("capture_task", dict(_FULL_TASK))
+    assert box.captured_notion_urls == ["https://notion.so/page-1"]
+
+
+@pytest.mark.asyncio
+async def test_capture_same_title_merges_into_one_task():
+    """Two assignees on one task → one DB task with both, not duplicate tasks."""
+    andrey = PersonRecord(uuid4(), "Андрей")
+    rai = PersonRecord(uuid4(), "Рай")
+    repo = FakeRepo(people_by_name={"Андрей": andrey, "Рай": rai})
+    box = _box(repo, actor=_ADMIN)
+    base = {"title": "Дабриф по МТС", "project": "МТС", "deadline": "2026-06-23"}
+    await box.execute("capture_task", {**base, "assignees": ["Андрей"]})
+    await box.execute("capture_task", {**base, "assignees": ["Рай"]})
+    assert len(repo.created_tasks) == 1            # one task, not two
+    assert len(box.captured_replies) == 1
+    assert "Андрей" in box.captured_replies[0] and "Рай" in box.captured_replies[0]
 
 
 @pytest.mark.asyncio

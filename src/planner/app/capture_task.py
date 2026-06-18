@@ -8,6 +8,7 @@ asks the user a follow-up question — missing fields simply stay empty.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from uuid import UUID
 
 import structlog
 
@@ -33,6 +34,8 @@ class CaptureResult:
     assignee_names: list[str]
     deadline_iso: str | None
     notion_url: str | None = None
+    task_id: UUID | None = None
+    duration_hours: int = _CAPTURE_HOURS
 
 
 class CaptureTaskUseCase:
@@ -111,4 +114,6 @@ class CaptureTaskUseCase:
             assignee_names=assignee_names,
             deadline_iso=intent.deadline.isoformat() if intent.deadline else None,
             notion_url=notion_url,
+            task_id=task.id,
+            duration_hours=duration,
         )

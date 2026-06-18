@@ -31,7 +31,7 @@ from planner.app.add_project import (
     InvalidProjectError,
     deserialize_allocations,
 )
-from planner.app.capture_task import CaptureTaskUseCase
+from planner.app.capture_task import CaptureResult, CaptureTaskUseCase
 from planner.app.confirm_plan import (
     ConfirmPlanUseCase,
     PlanNotFoundError,
@@ -182,27 +182,60 @@ async def build_capture_reply(
     repo: RepoPort,
     actor_record: PersonRecord | None,
     task_sink: TaskSinkPort | None = None,
-) -> str:
-    """Capture the task into the DB and return a confirmation line.
+) -> tuple[str, CaptureResult]:
+    """Capture the task into the DB; return the confirmation line and the result.
 
     When nobody is named but the LLM inferred required skills, append a
     *suggestion* of who could take it (spec section 5). This never auto-assigns
-    — a named assignee leaves the flow unchanged.
+    — a named assignee leaves the flow unchanged. The :class:`CaptureResult` is
+    returned alongside so the agent path can surface ``notion_url`` itself (the
+    model drops links when it paraphrases tool output).
     """
     result = await CaptureTaskUseCase(repo, sink=task_sink).execute(intent, actor_record)
+    hint = await _suggestion_hint(intent, repo=repo)
+    text = format_capture_confirmation(
+        title=result.task_title,
+        project=result.project_title,
+        assignees=result.assignee_names,
+        deadline_iso=result.deadline_iso,
+        hint=hint,
+    )
+    if result.notion_url:
+        text += f"\n\n🔗 Notion: {result.notion_url}"
+    return text, result
+
+
+def format_capture_confirmation(
+    *,
+    title: str,
+    project: str,
+    assignees: list[str],
+    deadline_iso: str | None,
+    hint: str | None = None,
+) -> str:
+    """Deterministic capture confirmation (the clean fixed-field layout — no
+    markdown tables, which Telegram doesn't render). The bot shows this verbatim
+    instead of the model's free-form narration so several assignees on one task
+    read as one task, formatted consistently."""
     lines = [
         "✓ Записал",
-        f"  задача: {result.task_title}",
-        f"  проект: {result.project_title}",
-        f"  кому: {', '.join(result.assignee_names) or '—'}",
-        f"  дедлайн: {result.deadline_iso or '—'}",
+        f"  задача: {title}",
+        f"  проект: {project}",
+        f"  кому: {', '.join(assignees) or '—'}",
+        f"  дедлайн: {deadline_iso or '—'}",
     ]
-    hint = await _suggestion_hint(intent, repo=repo)
     if hint is not None:
         lines.append(hint)
-    if result.notion_url:
-        lines.append(f"\n🔗 Notion: {result.notion_url}")
     return "\n".join(lines)
+
+
+def _append_notion_links(text: str, urls: tuple[str, ...]) -> str:
+    """Append captured Notion links the model omitted when paraphrasing tools."""
+    extra = [u for u in urls if u and u not in text]
+    if not extra:
+        return text
+    links = "\n".join(f"🔗 Notion: {u}" for u in extra)
+    return f"{text}\n\n{links}"
 
 
 async def _suggestion_hint(
@@ -320,11 +353,10 @@ async def _dispatch_intent(
         if repo is None:
             await message.answer(describe_intent(intent))
             return None
-        await message.answer(
-            await build_capture_reply(
-                intent, repo=repo, actor_record=actor_record, task_sink=task_sink
-            )
+        text, _ = await build_capture_reply(
+            intent, repo=repo, actor_record=actor_record, task_sink=task_sink
         )
+        await message.answer(text)
         return None
 
     if (
@@ -457,10 +489,23 @@ async def _handle_text(
             task_sink=task_sink,
         )
         reply = await agent.run(text, ctx, toolbox)
+        # Missing a key field → drive deterministic button clarify, not free text.
+        if reply.clarify is not None and edit_state is not None:
+            from planner.bot.handlers.clarify import start_capture_clarify
+
+            await start_capture_clarify(message, edit_state, reply.clarify, repo)
+            return None
+        # Captures → show the deterministic confirmations verbatim (clean layout,
+        # one-task merges), not the model's free narration. Otherwise its text.
+        base = (
+            "\n\n".join(reply.captured_replies)
+            if reply.captured_replies else reply.text
+        )
+        final_text = _append_notion_links(base, reply.notion_urls)
         kb = _plan_keyboard(reply.proposed_pv_id) if reply.proposed_pv_id else None
-        await message.answer(reply.text, reply_markup=kb)
+        await message.answer(final_text, reply_markup=kb)
         if history is not None and message.chat is not None:
-            history.record(message.chat.id, reply.text)
+            history.record(message.chat.id, final_text)
         return reply.proposed_pv_id
     # A compound message ("какая загрузка у Андрея? Если свободно, поставь
     # задачу") carries several actions — dispatch EACH in order. Single-action

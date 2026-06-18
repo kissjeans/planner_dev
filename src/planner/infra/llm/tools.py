@@ -229,6 +229,17 @@ class ToolBox:
         self._actor_record = actor_record
         self._sink = task_sink
         self.last_proposed_pv_id: UUID | None = None
+        # Notion URLs of tasks captured this request, surfaced deterministically
+        # by the bot — the model paraphrases tool output and drops links.
+        self.captured_notion_urls: list[str] = []
+        # Partial task args when capture is missing a key field — the bot drives a
+        # deterministic button clarify instead of trusting free-text follow-ups.
+        self.pending_capture: dict[str, Any] | None = None
+        # Deterministic capture confirmations shown verbatim by the bot (not the
+        # model's narration, which mangles layout). Same-title captures within a
+        # turn merge into ONE task (several assignees, not duplicate tasks).
+        self.captured_replies: list[str] = []
+        self._captures_by_key: dict[str, dict[str, Any]] = {}
 
     async def execute(self, name: str, args: dict[str, Any]) -> str:
         if name in _WRITE_TOOLS and not self._actor.get("is_admin"):
@@ -318,20 +329,81 @@ class ToolBox:
     # --- Write tools (admin-gated in execute) -----------------------------
 
     async def _capture_task(self, args: dict[str, Any]) -> str:
-        from planner.bot.handlers.task_router import build_capture_reply
+        from planner.bot.handlers.task_router import (
+            build_capture_reply,
+            format_capture_confirmation,
+        )
         from planner.domain.intent import CaptureTaskIntent
+
+        # Clarify ONLY the three key fields when missing (исполнитель / проект /
+        # дедлайн) — never invent them or default to "Inbox", and never ask about
+        # hours/skills. One consolidated ask, then the model re-calls with answers.
+        assignees = [str(a) for a in (args.get("assignees") or [])]
+        project = (args.get("project") or "").strip()
+        deadline = _opt_date(args.get("deadline"))
+        missing = []
+        if not assignees:
+            missing.append("кто исполнитель")
+        if not project:
+            missing.append("какой проект")
+        if deadline is None:
+            missing.append("дедлайн")
+        if missing:
+            self.pending_capture = {
+                "title": (args.get("title") or "задача").strip(),
+                "assignees": assignees,
+                "project": project,
+                "deadline": deadline.isoformat() if deadline else None,
+                "est_hours": args.get("est_hours"),
+                "required_skills": [str(s) for s in (args.get("required_skills") or [])],
+            }
+            return (
+                "Недостающие ключевые поля запрошены у менеджера кнопками — "
+                "задача будет поставлена после выбора, отвечать ничего не нужно."
+            )
+        # One task on several assignees: the model may call capture_task once per
+        # person — merge same-title calls into the first task instead of duplicating.
+        key = " ".join(str(args["title"]).split()).casefold()
+        if key in self._captures_by_key:
+            entry = self._captures_by_key[key]
+            for name in assignees:
+                person = await self._repo.get_person_by_name(name)
+                if person is not None and person.name not in entry["assignees"]:
+                    await self._repo.assign_task(
+                        entry["task_id"], person.id, entry["duration"]
+                    )
+                    entry["assignees"].append(person.name)
+            self.captured_replies[entry["idx"]] = format_capture_confirmation(
+                title=entry["title"], project=entry["project"],
+                assignees=entry["assignees"], deadline_iso=entry["deadline_iso"],
+            )
+            return "Это та же задача — добавил исполнителя, новую не создаю."
 
         intent = CaptureTaskIntent(
             task_title=args["title"],
-            assignee_names=[str(a) for a in (args.get("assignees") or [])],
-            project_name=args.get("project"),
-            deadline=_opt_date(args.get("deadline")),
+            assignee_names=assignees,
+            project_name=project,
+            deadline=deadline,
             est_hours=args.get("est_hours"),
             required_skills=[str(s) for s in (args.get("required_skills") or [])],
         )
-        return await build_capture_reply(
+        _text, result = await build_capture_reply(
             intent, repo=self._repo, actor_record=self._actor_record, task_sink=self._sink
         )
+        if result.notion_url:
+            self.captured_notion_urls.append(result.notion_url)
+        confirm = format_capture_confirmation(
+            title=result.task_title, project=result.project_title,
+            assignees=result.assignee_names, deadline_iso=result.deadline_iso,
+        )
+        self.captured_replies.append(confirm)
+        self._captures_by_key[key] = {
+            "task_id": result.task_id, "duration": result.duration_hours,
+            "title": result.task_title, "project": result.project_title,
+            "deadline_iso": result.deadline_iso,
+            "assignees": list(result.assignee_names), "idx": len(self.captured_replies) - 1,
+        }
+        return confirm
 
     async def _plan_project(self, args: dict[str, Any]) -> str:
         from planner.bot.handlers.task_router import build_add_project_reply

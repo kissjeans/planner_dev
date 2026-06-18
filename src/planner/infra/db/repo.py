@@ -69,14 +69,41 @@ def _person_record(p: Person) -> PersonRecord:
     )
 
 
+def _norm_name(s: str) -> str:
+    """Case-fold and treat ё/е as one letter for tolerant name matching."""
+    return s.strip().lower().replace("ё", "е")
+
+
+def match_person_name(candidates: list[str], query: str) -> str | None:
+    """Resolve a free-text name to one roster name.
+
+    Exact (case- and ё/е-insensitive) first; else a word in the full name equals
+    or starts with the query ("Лёша" -> "Лёша Гарник", "Андр" -> "Андрей …").
+    Shortest candidate wins on ties. ``None`` when nothing plausibly matches.
+    """
+    q = _norm_name(query or "")
+    if not q:
+        return None
+    exact = next((c for c in candidates if _norm_name(c) == q), None)
+    if exact is not None:
+        return exact
+    fuzzy = [
+        c for c in candidates
+        if any(w == q or w.startswith(q) for w in _norm_name(c).split())
+    ]
+    return min(fuzzy, key=len) if fuzzy else None
+
+
 class SqlAlchemyRepo:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._sf = session_factory
 
     async def get_person_by_name(self, name: str) -> PersonRecord | None:
         async with self._sf() as s:
-            p = await s.scalar(select(Person).where(Person.name == name))
-            return _person_record(p) if p else None
+            people = (await s.scalars(select(Person))).all()
+        by_name = {p.name: p for p in people}
+        chosen = match_person_name(list(by_name), name)
+        return _person_record(by_name[chosen]) if chosen is not None else None
 
     async def get_person_by_tg_id(self, tg_user_id: int) -> PersonRecord | None:
         async with self._sf() as s:

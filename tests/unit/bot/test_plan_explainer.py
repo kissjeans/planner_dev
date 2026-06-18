@@ -67,14 +67,21 @@ def test_deadline_reachable_verdict():
     assert "недостижим" not in out
 
 
-def test_deadline_missed_verdict():
+def test_explicit_deadline_missed_stands_without_levers():
+    """Variant A: a hard manager deadline stands — warn (plan tight), no levers."""
     t, p = uuid4(), uuid4()
     plan = PlanResult(
         assignments=(_assignment(t, p, date(2026, 6, 25), date(2026, 6, 25)),),
         end_date=date(2026, 6, 25),
     )
-    out = explain_plan(plan, {t: "Бриф"}, {p: "Андрей"}, deadline=date(2026, 6, 20))
-    assert "недостижим" in out
+    out = explain_plan(
+        plan, {t: "Бриф"}, {p: "Андрей"},
+        deadline=date(2026, 6, 20), earliest_end=date(2026, 7, 12),
+    )
+    assert "жёсткий" in out
+    assert "недостижим" not in out
+    assert "Рычаги" not in out
+    assert "12.07" in out  # earliest folded into the warning, not a separate line
 
 
 def test_backward_mode_earliest_end():
@@ -82,14 +89,17 @@ def test_backward_mode_earliest_end():
     assert "Самая ранняя дата завершения: 12.07" in out
 
 
-def test_deadline_missed_shows_levers():
-    """Acceptance scenario D — deadline missed must suggest levers (spec §12)."""
+def test_backward_mode_missed_deadline_still_levers():
+    """No explicit deadline given but plan overloads → levers remain (backward aid)."""
     t, p = uuid4(), uuid4()
     plan = PlanResult(
         assignments=(_assignment(t, p, date(2026, 6, 25), date(2026, 6, 25)),),
+        risks=(
+            RiskFlag(kind="overload", message="≈2 раб. дн.", person_id=p, day=date(2026, 6, 25)),
+        ),
         end_date=date(2026, 6, 25),
     )
-    out = explain_plan(plan, {t: "Бриф"}, {p: "Андрей"}, deadline=date(2026, 6, 20))
+    out = explain_plan(plan, {t: "Бриф"}, {p: "Андрей"})  # no deadline
     assert "Рычаги" in out
     assert "lite" in out
     assert "whatif" in out.lower() or "/whatif" in out
@@ -120,8 +130,8 @@ def test_overload_offers_levers():
     assert "/whatif" in out
 
 
-def test_overload_and_missed_deadline_offers_levers_once():
-    """Levers are a single soft-signal block, even when both triggers fire."""
+def test_explicit_deadline_suppresses_levers_even_with_overload():
+    """Variant A: a hard manager deadline stands — no lever choice, just a warning."""
     t, p = uuid4(), uuid4()
     plan = PlanResult(
         assignments=(_assignment(t, p, date(2026, 6, 25), date(2026, 6, 25)),),
@@ -131,4 +141,5 @@ def test_overload_and_missed_deadline_offers_levers_once():
         end_date=date(2026, 6, 25),
     )
     out = explain_plan(plan, {t: "Бриф"}, {p: "Андрей"}, deadline=date(2026, 6, 20))
-    assert out.count("Рычаги") == 1
+    assert "Рычаги" not in out
+    assert "жёсткий" in out

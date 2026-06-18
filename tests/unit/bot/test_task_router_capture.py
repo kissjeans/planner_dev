@@ -72,7 +72,7 @@ async def test_suggests_assignee_when_none_named_and_skills_present():
     intent = CaptureTaskIntent(
         task_title="нарисовать макет", required_skills=["дизайн"]
     )
-    reply = await build_capture_reply(intent, repo=repo, actor_record=_ADMIN)
+    reply, _ = await build_capture_reply(intent, repo=repo, actor_record=_ADMIN)
 
     assert "✓ Записал" in reply
     assert "предлагаю" in reply.lower()
@@ -93,7 +93,7 @@ async def test_no_suggestion_when_assignee_named():
         task_title="нарисовать макет", assignee_names=["Андрей"],
         required_skills=["дизайн"],
     )
-    reply = await build_capture_reply(intent, repo=repo, actor_record=_ADMIN)
+    reply, _ = await build_capture_reply(intent, repo=repo, actor_record=_ADMIN)
 
     assert "предлагаю" not in reply.lower()
     assert repo.assignments and repo.assignments[0][1] == andrey.id
@@ -107,7 +107,7 @@ async def test_no_suggestion_when_no_skills():
     repo = _CaptureRepo(capabilities=(designer,))
 
     intent = CaptureTaskIntent(task_title="позвонить клиенту")
-    reply = await build_capture_reply(intent, repo=repo, actor_record=_ADMIN)
+    reply, _ = await build_capture_reply(intent, repo=repo, actor_record=_ADMIN)
 
     assert "предлагаю" not in reply.lower()
 
@@ -122,6 +122,6 @@ async def test_no_suggestion_when_no_matching_candidate():
     intent = CaptureTaskIntent(
         task_title="нарисовать макет", required_skills=["дизайн"]
     )
-    reply = await build_capture_reply(intent, repo=repo, actor_record=_ADMIN)
+    reply, _ = await build_capture_reply(intent, repo=repo, actor_record=_ADMIN)
 
     assert "предлагаю" not in reply.lower()

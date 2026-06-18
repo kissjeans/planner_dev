@@ -69,17 +69,25 @@ def explain_plan(
     )
     if deadline is not None:
         if deadline_missed:
-            lines.append(f"❌ Дедлайн {_fmt_day(deadline)} недостижим.")
+            # An explicit manager deadline stands — set it, just flag that the
+            # template's critical path is tighter; never force a lever choice.
+            tail = f" (по шаблону ранняя дата {_fmt_day(earliest_end)})" if earliest_end else ""
+            lines.append(
+                f"⚠ Дедлайн {_fmt_day(deadline)} жёсткий, план плотный{tail}."
+            )
         else:
             lines.append(f"✅ Дедлайн {_fmt_day(deadline)} достижим.")
 
-    # Overloads and missed deadlines are soft signals; offer the levers once.
-    if overloads or deadline_missed:
+    # Levers are a backward-mode aid (no explicit deadline given). With a hard
+    # manager deadline the date stands, so we don't offer a lever choice.
+    if overloads and deadline is None:
         lines.append(_LEVERS)
 
-    if earliest_end is not None:
+    # Backward mode (no deadline): the earliest date is the headline. In forward
+    # mode it is already folded into the deadline line above, so don't repeat it.
+    if earliest_end is not None and deadline is None:
         lines.append(f"Самая ранняя дата завершения: {_fmt_day(earliest_end)}.")
-    elif plan.end_date is not None:
+    elif plan.end_date is not None and deadline is None:
         lines.append(f"Завершение: {_fmt_day(plan.end_date)}.")
 
     return "\n".join(lines)

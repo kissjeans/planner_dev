@@ -10,6 +10,7 @@ from planner.app.confirm_plan import ConfirmPlanUseCase
 from planner.app.explain_plan import ExplainPlanUseCase
 from planner.app.ports import RepoPort
 from planner.bot.handlers import (
+    clarify,
     confirm,
     load,
     replan,
@@ -104,6 +105,9 @@ def build_dispatcher(
     dp.callback_query.middleware(actor_mw)
 
     dp.include_router(start.router)
+    # Before task_router: its state-filtered clarify text handlers must preempt
+    # task_router's catch-all text handler.
+    dp.include_router(clarify.router)
     dp.include_router(task_router.router)
     dp.include_router(load.router)
     dp.include_router(suggest.router)
