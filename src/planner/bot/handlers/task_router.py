@@ -575,6 +575,25 @@ async def _handle_text(
     return last_pv
 
 
+async def _is_addressed_in_group(message: Message, text: str) -> bool:
+    """True in a private chat, or in a group only when the message addresses the
+    bot — via @mention in ``text`` (caption for voice) or a reply to the bot.
+
+    Used to stop the bot reacting to text/voice meant for other people in a group.
+    """
+    chat = getattr(message, "chat", None)
+    if chat is None or getattr(chat, "type", "private") == "private" or message.bot is None:
+        return True
+    bot_info = await message.bot.get_me()
+    bot_mention = f"@{bot_info.username}".lower()
+    is_reply_to_bot = (
+        message.reply_to_message is not None
+        and message.reply_to_message.from_user is not None
+        and message.reply_to_message.from_user.id == bot_info.id
+    )
+    return bot_mention in text.lower() or is_reply_to_bot
+
+
 @router.message(F.voice)
 async def handle_voice(
     message: Message,
@@ -592,6 +611,10 @@ async def handle_voice(
     history: ChatHistory | None = None,
     agent: PlannerAgent | None = None,
 ) -> None:
+    # In a group, only handle a voice addressed to the bot (caption @mention or
+    # reply to the bot) — never react to voices meant for other people.
+    if not await _is_addressed_in_group(message, getattr(message, "caption", None) or ""):
+        return
     if stt is None or message.voice is None or message.bot is None:
         await message.answer("Голосовые сообщения не поддерживаются — напиши текстом.")
         return
@@ -762,18 +785,9 @@ async def handle_mention_or_dm(
     is a reply to the bot. In private chats, always respond.
     """
     raw = message.text or ""
-
-    if message.chat.type != "private" and message.bot is not None:
-        # Group / supergroup: only respond when bot is @mentioned or replied-to.
-        bot_info = await message.bot.get_me()
-        bot_mention = f"@{bot_info.username}".lower()
-        is_reply_to_bot = (
-            message.reply_to_message is not None
-            and message.reply_to_message.from_user is not None
-            and message.reply_to_message.from_user.id == bot_info.id
-        )
-        if bot_mention not in raw.lower() and not is_reply_to_bot:
-            return
+    # Group: only respond when the bot is @mentioned or replied-to (same rule as voice).
+    if not await _is_addressed_in_group(message, raw):
+        return
 
     # Strip leading @botname if present so parser gets clean text.
     text = raw.partition(" ")[2].strip() if raw.lower().startswith("@") else raw.strip()

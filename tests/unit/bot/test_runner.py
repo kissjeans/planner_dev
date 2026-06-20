@@ -157,9 +157,9 @@ async def test_set_bot_commands_registers_menu():
     bot.set_my_commands.assert_awaited_once()
     (commands,) = bot.set_my_commands.call_args.args
     registered = {c.command for c in commands}
-    assert {
-        "start", "task", "load", "whatif", "vacation", "suggest", "replan"
-    } <= registered
+    assert {"start", "task", "load", "vacation", "replan"} <= registered
+    # /suggest and /whatif were removed from the menu.
+    assert "whatif" not in registered and "suggest" not in registered
 
 
 @pytest.mark.asyncio
