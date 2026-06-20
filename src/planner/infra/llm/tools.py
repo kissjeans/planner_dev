@@ -6,11 +6,12 @@ here). ``ToolBox.execute`` dispatches by name and ALWAYS returns a short Russian
 string — including a clear error string the model can react to. It never raises.
 
 Guardrails (spec section 13/16/21):
-- Write tools (capture_task / plan_project / set_vacation / replan / assign_task
-  / confirm_plan) require ``actor['is_admin']``; otherwise they return
+- Write tools (capture_task / plan_project / set_vacation / replan / assign_task)
+  require ``actor['is_admin']``; otherwise they return
   «Только админ может менять план.» without touching the repo.
-- ``plan_project`` only PROPOSES a plan version (manager confirms via the inline
-  button or ``confirm_plan``); the proposed id is stashed on
+- ``plan_project`` only PROPOSES a plan version. Committing is manager-gated and
+  deterministic: the agent has NO confirm tool — the manager presses the inline
+  ✅ button (or types «ок»). The proposed id is stashed on
   ``self.last_proposed_pv_id`` so the caller can attach the ✅/✏️ buttons.
 - Read tools stay open to everyone (acceptance G).
 """
@@ -24,7 +25,7 @@ from uuid import UUID
 
 import structlog
 
-from planner.app.ports import PersonRecord, RepoPort, TaskSinkPort
+from planner.app.ports import PersonRecord, ProjectSinkPort, RepoPort, TaskSinkPort
 from planner.app.suggest_assignees import SuggestAssigneesUseCase
 from planner.domain.solver.ports import SolverPort
 from planner.domain.units import hours_to_working_days
@@ -33,7 +34,7 @@ log = structlog.get_logger(__name__)
 
 _ADMIN_ONLY_MSG = "Только админ может менять план."
 _WRITE_TOOLS = frozenset(
-    {"capture_task", "plan_project", "set_vacation", "replan", "assign_task", "confirm_plan"}
+    {"capture_task", "plan_project", "set_vacation", "replan", "assign_task"}
 )
 _LOAD_DAYS = 14
 _MAX_LISTED = 12  # cap list output so the agent context stays small
@@ -59,7 +60,10 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         "name": "find_assignees",
         "description": (
             "Подобрать исполнителей по требуемым навыкам, ранжируя по покрытию "
-            "навыков и текущей загрузке. Только подсказка — не назначает."
+            "навыков и текущей загрузке. Только подсказка — не назначает. "
+            "Если у задачи есть жёсткая привязка из шаблона — передай имена в "
+            "bound_assignees: тогда выбор идёт ТОЛЬКО из них, навыки лишь "
+            "упорядочивают внутри привязки."
         ),
         "input_schema": {
             "type": "object",
@@ -68,6 +72,14 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Список требуемых навыков",
+                },
+                "bound_assignees": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Имена жёстко привязанных исполнителей (из шаблона). "
+                        "Если заданы — кандидаты ограничены только ими."
+                    ),
                 },
             },
             "required": ["required_skills"],
@@ -128,7 +140,7 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         "name": "plan_project",
         "description": (
             "Создать проект из шаблона (standard|lite) и ПРЕДЛОЖИТЬ план "
-            "(статус proposed). Менеджер подтверждает кнопкой или confirm_plan. "
+            "(статус proposed). Менеджер подтверждает кнопкой ✅ Подтвердить. "
             "Без дедлайна — обратный режим (solver считает раннюю дату + буфер)."
         ),
         "input_schema": {
@@ -178,19 +190,6 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "required": ["task_ref", "person"],
         },
     },
-    {
-        "name": "confirm_plan",
-        "description": (
-            "Зафиксировать предложенный план (proposed → committed). "
-            "Без plan_version_id берётся последний предложенный в этом диалоге."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "plan_version_id": {"type": "string", "description": "UUID версии плана (опц.)"},
-            },
-        },
-    },
 ]
 
 
@@ -222,12 +221,14 @@ class ToolBox:
         actor: dict[str, Any],
         actor_record: PersonRecord | None,
         task_sink: TaskSinkPort | None = None,
+        project_sink: ProjectSinkPort | None = None,
     ) -> None:
         self._repo = repo
         self._solver = solver
         self._actor = actor
         self._actor_record = actor_record
         self._sink = task_sink
+        self._project_sink = project_sink
         self.last_proposed_pv_id: UUID | None = None
         # Notion URLs of tasks captured this request, surfaced deterministically
         # by the bot — the model paraphrases tool output and drops links.
@@ -272,11 +273,24 @@ class ToolBox:
 
     async def _find_assignees(self, args: dict[str, Any]) -> str:
         skills = [str(s) for s in (args.get("required_skills") or [])]
-        suggestions = await SuggestAssigneesUseCase(self._repo).execute(skills)
+        bound_names = [str(n) for n in (args.get("bound_assignees") or [])]
+        restrict_to: frozenset[UUID] | None = None
+        header = "Кандидаты:"
+        if bound_names:
+            by_name = {p.name.casefold(): p.id for p in await self._repo.list_people()}
+            ids = frozenset(
+                by_name[n.casefold()] for n in bound_names if n.casefold() in by_name
+            )
+            if ids:
+                restrict_to = ids
+                header = "Кандидаты (жёсткая привязка из шаблона):"
+        suggestions = await SuggestAssigneesUseCase(self._repo).execute(
+            skills, restrict_to=restrict_to
+        )
         ranked = [s for s in suggestions if s.coverage > 0] or list(suggestions)
         if not ranked:
             return "Подходящих исполнителей не нашёл."
-        lines = ["Кандидаты:"]
+        lines = [header]
         for s in ranked[:_MAX_LISTED]:
             lines.append(
                 f"• {s.name}: покрытие {int(s.coverage * 100)}%, загрузка {s.load_hours} ч."
@@ -422,6 +436,7 @@ class ToolBox:
             solver=self._solver,
             actor_record=self._actor_record,
             today=date.today(),
+            project_sink=self._project_sink,
         )
         self.last_proposed_pv_id = pv_id
         return text
@@ -461,25 +476,6 @@ class ToolBox:
         actor_id = self._actor_record.id if self._actor_record else None
         return await build_assign_reply(intent, repo=self._repo, actor_id=actor_id)
 
-    async def _confirm_plan(self, args: dict[str, Any]) -> str:
-        from planner.app.confirm_plan import (
-            ConfirmPlanUseCase,
-            PlanNotFoundError,
-            PlanNotProposedError,
-        )
-
-        raw = args.get("plan_version_id")
-        target = UUID(str(raw)) if raw else self.last_proposed_pv_id
-        if target is None:
-            return "Нет плана на подтверждение — сначала предложи план."
-        if self._actor_record is None:
-            return "Не удалось определить автора — попроси админа добавить тебя."
-        try:
-            await ConfirmPlanUseCase(self._repo).execute(target, self._actor_record)
-        except (PlanNotFoundError, PlanNotProposedError):
-            return "План не найден или уже зафиксирован."
-        return "План зафиксирован."
-
     # --- Shared helpers ---------------------------------------------------
 
     async def _committed_hours(self) -> dict[UUID, int]:
@@ -504,5 +500,6 @@ _EXECUTORS = {
     "set_vacation": ToolBox._set_vacation,
     "replan": ToolBox._replan,
     "assign_task": ToolBox._assign_task,
-    "confirm_plan": ToolBox._confirm_plan,
+    # confirm_plan intentionally NOT exposed: committing is manager-gated
+    # (inline ✅ button / typed «ок»), never the agent (see module docstring).
 }

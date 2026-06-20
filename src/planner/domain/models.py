@@ -14,6 +14,7 @@ from uuid import UUID
 # Hard binding strictness levels (see spec section 4.1 / TZ section 7).
 Strictness = str  # 'A' | 'B' | 'C'
 LinkType = str  # 'FS' | 'SS'
+PairMode = str  # 'none' | 'optional' | 'required'
 
 
 @dataclass(frozen=True)
@@ -29,8 +30,17 @@ class Person:
 class Task:
     """A schedulable unit of work.
 
-    ``allowed_person_ids`` is the hard executor binding. A ``done`` task with
-    ``fixed_start`` / ``fixed_assignee_id`` is treated as immovable.
+    ``allowed_person_ids`` is the hard executor binding, ordered by priority
+    (index 0 = highest); the solver prefers the earliest-placeable person and
+    breaks ties toward higher priority. A ``done`` task with ``fixed_start`` /
+    ``fixed_assignee_id`` is treated as immovable.
+
+    ``pair_mode`` controls multi-assignee behaviour: ``required`` places the two
+    top-priority people on the same day(s) at full duration (no speedup);
+    ``optional`` allows a second helper but is currently scheduled as a single
+    assignee (C2 simplification). ``duration_is_window`` marks a fixed
+    calendar-window task (e.g. an external design resource) that spans
+    ``ceil(duration_hours / 8)`` working days and consumes no team capacity.
     """
 
     id: UUID
@@ -40,7 +50,8 @@ class Task:
     project_id: UUID | None = None
     required_skills: tuple[str, ...] = ()  # LLM-inferred skill hints (spec 3)
     is_splittable: bool = False
-    allow_two_assignees: bool = False
+    pair_mode: PairMode = "none"
+    duration_is_window: bool = False
     status: str = "not_done"  # not_done / done / preliminary / confirmed
     source: str = "bot_formed"  # 'bot_formed' | 'template' (provenance, spec 4)
     fixed_start: date | None = None
@@ -50,11 +61,17 @@ class Task:
 
 @dataclass(frozen=True)
 class Dependency:
-    """An edge ``depends_on_id`` -> ``task_id`` of a given link type."""
+    """An edge ``depends_on_id`` -> ``task_id`` of a given link type.
+
+    ``lag_working_days`` delays the successor by that many working days after
+    the link resolves (e.g. FS + 5 working days for a client-feedback wait).
+    ``0`` means the standard link (next working day for FS).
+    """
 
     task_id: UUID
     depends_on_id: UUID
     link_type: LinkType = "FS"
+    lag_working_days: int = 0
 
 
 @dataclass(frozen=True)

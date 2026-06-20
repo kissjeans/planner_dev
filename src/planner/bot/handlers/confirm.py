@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import Any, cast
 from uuid import UUID
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
@@ -18,6 +20,19 @@ from planner.app.ports import PersonRecord
 from planner.bot.states import PlanEditState
 
 router = Router(name="confirm")
+
+
+async def _retire_keyboard(cb: CallbackQuery) -> None:
+    """Strip the inline keyboard so the plan can't be confirmed twice.
+
+    Tolerates an already-edited / too-old / deleted message (a stale second
+    press): the TelegramBadRequest is swallowed, the keyboard is just gone.
+    """
+    msg = getattr(cb, "message", None)
+    if not isinstance(msg, Message):
+        return
+    with suppress(TelegramBadRequest):
+        await msg.edit_reply_markup(reply_markup=None)
 
 
 @router.callback_query(F.data.startswith("confirm:"))
@@ -39,9 +54,13 @@ async def handle_confirm(
 
     try:
         await confirm_uc.execute(pv_id, actor_record)
-        await cb.answer("План зафиксирован.")
+        await _retire_keyboard(cb)
+        await cb.answer("✅ План зафиксирован.")
     except (PlanNotFoundError, PlanNotProposedError):
-        await cb.answer("План не найден или уже зафиксирован.", show_alert=True)
+        # Already committed (e.g. a second press) — retire the button and say so
+        # plainly instead of an alarming error.
+        await _retire_keyboard(cb)
+        await cb.answer("Этот план уже зафиксирован.", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("edit:"))

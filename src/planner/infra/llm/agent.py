@@ -120,8 +120,17 @@ class PlannerAgent:
                 messages=cast("list[MessageParam]", messages),
             )
             if resp.stop_reason != "tool_use":
+                final = _final_text(resp)
+                log.info(
+                    "agent_done",
+                    stop_reason=resp.stop_reason,
+                    text_len=len(final),
+                    captured=len(toolbox.captured_replies),
+                    clarify=toolbox.pending_capture is not None,
+                    proposed=toolbox.last_proposed_pv_id is not None,
+                )
                 return AgentReply(
-                    text=_final_text(resp),
+                    text=final,
                     proposed_pv_id=toolbox.last_proposed_pv_id,
                     notion_urls=tuple(toolbox.captured_notion_urls),
                     clarify=toolbox.pending_capture,
@@ -133,6 +142,7 @@ class PlannerAgent:
                 if block.type == "tool_use":
                     args = block.input if isinstance(block.input, dict) else {}
                     out = await toolbox.execute(block.name, args)
+                    log.info("agent_tool", tool=block.name, result=str(out)[:160])
                     results.append(
                         {
                             "type": "tool_result",
@@ -141,6 +151,7 @@ class PlannerAgent:
                         }
                     )
             messages.append({"role": "user", "content": results})
+        log.warning("agent_max_iters", captured=len(toolbox.captured_replies))
         return AgentReply(
             text=_CAP_MESSAGE,
             proposed_pv_id=toolbox.last_proposed_pv_id,

@@ -32,6 +32,7 @@ class SuggestAssigneesUseCase:
         *,
         include_external: bool = False,
         limit: int | None = DEFAULT_LIMIT,
+        restrict_to: frozenset[UUID] | None = None,
     ) -> tuple[AssigneeSuggestion, ...]:
         caps = await self._repo.get_person_capabilities()
         load = await self._committed_load()
@@ -50,6 +51,7 @@ class SuggestAssigneesUseCase:
             candidates,
             include_external=include_external,
             limit=limit,
+            restrict_to=restrict_to,
         )
 
     async def _committed_load(self) -> dict[UUID, int]:

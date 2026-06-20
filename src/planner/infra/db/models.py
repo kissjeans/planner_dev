@@ -116,10 +116,20 @@ class TemplateTask(Base):
     duration_hours: Mapped[int] = mapped_column(nullable=False)
     duration_is_window: Mapped[bool] = mapped_column(nullable=False, default=False)
     is_splittable: Mapped[bool] = mapped_column(nullable=False, default=False)
+    # Deprecated: superseded by ``pair_mode`` (kept for backfill/history).
     allow_two_assignees: Mapped[bool] = mapped_column(nullable=False, default=False)
+    pair_mode: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="none", server_default="none"
+    )
     optional_in_lite: Mapped[bool] = mapped_column(nullable=False, default=False)
 
     template: Mapped["Template"] = relationship(back_populates="tasks")
+
+    __table_args__ = (
+        CheckConstraint(
+            "pair_mode IN ('none','optional','required')", name="ck_pair_mode_template"
+        ),
+    )
 
 
 class TemplateTaskAssignee(Base):
@@ -134,6 +144,10 @@ class TemplateTaskAssignee(Base):
         UUID(as_uuid=True), ForeignKey("people.id"), primary_key=True
     )
     strictness: Mapped[str] = mapped_column(String(1), nullable=False)
+    # Executor priority within a task: 0 = highest (chosen first when free).
+    priority: Mapped[int] = mapped_column(
+        nullable=False, default=0, server_default="0"
+    )
 
     __table_args__ = (
         CheckConstraint("strictness IN ('A','B','C')", name="ck_strictness"),
@@ -152,6 +166,10 @@ class TemplateDependency(Base):
         UUID(as_uuid=True), ForeignKey("template_tasks.id"), primary_key=True
     )
     link_type: Mapped[str] = mapped_column(String(2), nullable=False)
+    # Working-day lag added after the link resolves (e.g. FS + 5 working days).
+    lag_working_days: Mapped[int] = mapped_column(
+        nullable=False, default=0, server_default="0"
+    )
 
     __table_args__ = (
         CheckConstraint("link_type IN ('FS','SS')", name="ck_link_type_template"),
@@ -174,6 +192,8 @@ class Project(Base):
     deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
     priority: Mapped[str] = mapped_column(Text, nullable=False, default="medium")
     status: Mapped[str] = mapped_column(Text, nullable=False, default="planning")
+    # Notion master-card page id (C3); NULL when Notion is not configured.
+    notion_page_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -210,13 +230,23 @@ class Task(Base):
     )
     is_preliminary: Mapped[bool] = mapped_column(nullable=False, default=False)
     is_splittable: Mapped[bool] = mapped_column(nullable=False, default=False)
+    duration_is_window: Mapped[bool] = mapped_column(
+        nullable=False, default=False, server_default="false"
+    )
+    # Deprecated: superseded by ``pair_mode`` (kept for backfill/history).
     allow_two_assignees: Mapped[bool] = mapped_column(nullable=False, default=False)
+    pair_mode: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="none", server_default="none"
+    )
 
     project: Mapped["Project"] = relationship(back_populates="tasks")
 
     __table_args__ = (
         CheckConstraint(
             "source IN ('bot_formed','template')", name="ck_task_source"
+        ),
+        CheckConstraint(
+            "pair_mode IN ('none','optional','required')", name="ck_pair_mode_task"
         ),
     )
 
@@ -247,6 +277,10 @@ class Dependency(Base):
         UUID(as_uuid=True), ForeignKey("tasks.id"), primary_key=True
     )
     link_type: Mapped[str] = mapped_column(String(2), nullable=False)
+    # Working-day lag added after the link resolves (e.g. FS + 5 working days).
+    lag_working_days: Mapped[int] = mapped_column(
+        nullable=False, default=0, server_default="0"
+    )
 
     __table_args__ = (
         CheckConstraint("link_type IN ('FS','SS')", name="ck_link_type_dep"),

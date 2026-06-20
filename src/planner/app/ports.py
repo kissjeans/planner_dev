@@ -31,6 +31,34 @@ class TaskSinkPort(Protocol):
 
 
 @dataclass(frozen=True)
+class SinkProject:
+    """A project master card to mirror to an external sink (C3 / R6)."""
+
+    title: str
+    template_code: str | None
+    task_names: tuple[str, ...]  # ordered checklist of the project's tasks
+    deadline: date | None
+
+
+class ProjectSinkPort(Protocol):
+    async def create_card(self, project: SinkProject) -> str | None:
+        """Create a project master card (checklist + brief + ideas).
+
+        Returns the external page id/url, or ``None`` when the sink is not
+        configured or the call fails (keyless degrade — never blocks).
+        """
+        ...
+
+    async def mark_task_done(self, page_id: str, task_name: str) -> bool:
+        """Tick the checklist item for a finished task (one-way done→checkbox)."""
+        ...
+
+    async def archive_card(self, page_id: str) -> bool:
+        """Archive (soft-delete) a project master card; mirror of a plan reset."""
+        ...
+
+
+@dataclass(frozen=True)
 class PersonRecord:
     id: UUID
     name: str
@@ -56,6 +84,7 @@ class ProjectRecord:
     priority: str = "medium"
     template_code: str | None = None
     start_date: date | None = None
+    notion_page_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -121,6 +150,10 @@ class RepoPort(Protocol):
     ) -> PlanVersionRecord: ...
 
     async def get_committed_plan(self, project_id: UUID) -> PlanVersionRecord | None: ...
+
+    async def get_project(self, project_id: UUID) -> ProjectRecord | None:
+        """Fetch a project by id (carries ``notion_page_id`` for mirroring)."""
+        ...
 
     async def get_project_by_title(self, title: str) -> ProjectRecord | None:
         """Case-insensitive lookup of a project by title (for task capture)."""
@@ -239,6 +272,10 @@ class RepoPort(Protocol):
     async def set_task_status(self, task_id: UUID, status: str) -> None: ...
 
     async def set_project_status(self, project_id: UUID, status: str) -> None: ...
+
+    async def set_project_notion_page(
+        self, project_id: UUID, page_id: str
+    ) -> None: ...
 
     async def save_project_tasks(
         self,

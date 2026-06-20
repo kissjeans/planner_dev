@@ -1,142 +1,165 @@
+# Lite presales template (plan C1, §6): {1,2,3,4,6,7,8,10,13,14,15,16,17,18,19}.
+# Excludes 5, 9, 11, 12. Adds #19 (Notion roll-up). #16 keeps its required pair
+# but its dependency on #12 is dropped, since #12 is not part of lite (R5).
+# Same conventions as tasks_standard.yaml.
 tasks:
   - ord: 1
-    name: "Анализ брифа клиента"
-    duration_hours: 4
+    name: "Заполнение брифа"
+    duration_hours: 8
     is_splittable: false
-    allow_two_assignees: false
+    pair_mode: none
     optional_in_lite: false
     depends_on: []
     assignees:
-      - name: "Айгуль"
-        strictness: "A"
+      - { name: "Андрей", strictness: "A", priority: 0 }
+      - { name: "Рай", strictness: "A", priority: 1 }
 
   - ord: 2
-    name: "Подготовка вопросов к клиенту"
-    duration_hours: 4
-    is_splittable: false
-    allow_two_assignees: false
-    optional_in_lite: true
-    depends_on: [1]
-    assignees:
-      - name: "Рай"
-        strictness: "B"
-      - name: "Айгуль"
-        strictness: "C"
-
-  - ord: 3
-    name: "Встреча с клиентом (уточнение требований)"
-    duration_hours: 4
-    is_splittable: false
-    allow_two_assignees: true
-    optional_in_lite: true
-    depends_on: [2]
-    assignees:
-      - name: "Андрей"
-        strictness: "A"
-      - name: "Рай"
-        strictness: "B"
-
-  - ord: 4
-    name: "Определение технического решения"
-    duration_hours: 4
-    is_splittable: false
-    allow_two_assignees: false
+    name: "Ресерч аудитории и механик"
+    duration_hours: 8
+    is_splittable: true
+    pair_mode: optional
     optional_in_lite: false
     depends_on: [1]
     assignees:
-      - name: "Дима"
-        strictness: "A"
+      - { name: "Тоня", strictness: "A", priority: 0 }
+      - { name: "Алиса", strictness: "B", priority: 1 }
 
-  - ord: 5
-    name: "Оценка трудоёмкости и бюджета"
-    duration_hours: 4
+  - ord: 3
+    name: "Подготовка драфта идей"
+    duration_hours: 8
+    is_splittable: true
+    pair_mode: optional
+    optional_in_lite: false
+    depends_on: [2]
+    assignees:
+      - { name: "Тоня", strictness: "A", priority: 0 }
+      - { name: "Алиса", strictness: "B", priority: 1 }
+
+  - ord: 4
+    name: "Проверка идей и механик"
+    duration_hours: 8
     is_splittable: false
-    allow_two_assignees: false
+    pair_mode: optional
+    optional_in_lite: false
+    depends_on: [3]
+    assignees:
+      - { name: "Айгуль", strictness: "A", priority: 0 }
+      - { name: "Андрей", strictness: "B", priority: 1 }
+      - { name: "Лёша", strictness: "C", priority: 2 }
+
+  - ord: 6
+    name: "Внесение правок"
+    duration_hours: 8
+    is_splittable: false
+    pair_mode: optional
     optional_in_lite: false
     depends_on: [4]
     assignees:
-      - name: "Андрей"
-        strictness: "A"
-
-  - ord: 6
-    name: "Разработка структуры коммерческого предложения"
-    duration_hours: 4
-    is_splittable: false
-    allow_two_assignees: false
-    optional_in_lite: false
-    depends_on: [5]
-    assignees:
-      - name: "Рай"
-        strictness: "B"
-      - name: "Андрей"
-        strictness: "C"
+      - { name: "Тоня", strictness: "A", priority: 0 }
+      - { name: "Алиса", strictness: "B", priority: 1 }
 
   - ord: 7
-    name: "Написание текста КП"
+    name: "Подробное описание идей"
     duration_hours: 8
     is_splittable: true
-    allow_two_assignees: false
+    pair_mode: optional
     optional_in_lite: false
     depends_on: [6]
     assignees:
-      - name: "Лёша"
-        strictness: "A"
+      - { name: "Тоня", strictness: "A", priority: 0 }
+      - { name: "Алиса", strictness: "B", priority: 1 }
 
   - ord: 8
-    name: "Вёрстка КП (дизайн-макет)"
+    name: "Проверка метрик в описаниях"
     duration_hours: 8
     is_splittable: false
-    allow_two_assignees: false
+    pair_mode: none
     optional_in_lite: false
     depends_on: [7]
     assignees:
-      - name: "Катя"
-        strictness: "A"
+      - { name: "Айгуль", strictness: "A", priority: 0 }
 
-  - ord: 9
-    name: "Внутренняя проверка и согласование"
-    duration_hours: 4
-    is_splittable: false
-    allow_two_assignees: true
+  - ord: 10
+    name: "Расчёт МП и блок промо"
+    duration_hours: 16
+    is_splittable: true
+    pair_mode: none
     optional_in_lite: false
     depends_on: [8]
     assignees:
-      - name: "Андрей"
-        strictness: "A"
-      - name: "Лёша"
-        strictness: "B"
+      - { name: "Айгуль", strictness: "A", priority: 0 }
 
-  - ord: 10
-    name: "Финальные правки"
-    duration_hours: 4
+  - ord: 13
+    name: "Постановка задачи на оценку"
+    duration_hours: 8
     is_splittable: false
-    allow_two_assignees: true
-    optional_in_lite: true
-    depends_on: [9]
-    assignees:
-      - name: "Лёша"
-        strictness: "B"
-      - name: "Катя"
-        strictness: "B"
-
-  - ord: 11
-    name: "Подготовка сопроводительного письма"
-    duration_hours: 4
-    is_splittable: false
-    allow_two_assignees: false
-    optional_in_lite: true
-    depends_on: [9]
-    assignees:
-      - name: "Рай"
-        strictness: "A"
-
-  - ord: 12
-    name: "Отправка КП клиенту и фиксация в CRM"
-    duration_hours: 4
-    is_splittable: false
-    allow_two_assignees: false
+    pair_mode: none
     optional_in_lite: false
-    depends_on: [10, 11]
+    depends_on: [8]
     assignees:
-      - name: "Рай"
-        strictness: "A"
+      - { name: "Айгуль", strictness: "A", priority: 0 }
+
+  - ord: 14
+    name: "Оценка разработки"
+    duration_hours: 8
+    is_splittable: false
+    pair_mode: none
+    optional_in_lite: false
+    depends_on: [13]
+    assignees:
+      - { name: "Лёша", strictness: "A", priority: 0 }
+
+  - ord: 15
+    name: "Оценка стоимости"
+    duration_hours: 8
+    is_splittable: false
+    pair_mode: none
+    optional_in_lite: false
+    depends_on: [14]
+    assignees:
+      - { name: "Андрей", strictness: "A", priority: 0 }
+
+  - ord: 16
+    name: "Вычитка с Алисой"
+    duration_hours: 8
+    is_splittable: false
+    pair_mode: required   # strictly Тоня + Алиса together (R2)
+    optional_in_lite: false
+    depends_on: []        # #12 dropped in lite (R5)
+    assignees:
+      - { name: "Тоня", strictness: "A", priority: 0 }
+      - { name: "Алиса", strictness: "A", priority: 1 }
+
+  - ord: 17
+    name: "Отправка клиенту"
+    duration_hours: 8
+    is_splittable: false
+    pair_mode: none
+    optional_in_lite: false
+    depends_on: [16]
+    assignees:
+      - { name: "Андрей", strictness: "A", priority: 0 }
+      - { name: "Рай", strictness: "A", priority: 1 }
+
+  - ord: 18
+    name: "Обратная связь от клиентов"
+    duration_hours: 8
+    is_splittable: false
+    pair_mode: none
+    optional_in_lite: false
+    depends_on:
+      - { ord: 17, lag_days: 5 }   # FS + 5 working days (R1)
+    assignees:
+      - { name: "Андрей", strictness: "A", priority: 0 }
+      - { name: "Рай", strictness: "A", priority: 1 }
+
+  - ord: 19
+    name: "Сборка идеи в Ноушн"
+    duration_hours: 8
+    is_splittable: false
+    pair_mode: none
+    optional_in_lite: false
+    depends_on: [8]
+    assignees:
+      - { name: "Алиса", strictness: "A", priority: 0 }

@@ -211,7 +211,20 @@ class SqlAlchemyRepo:
             )
             if p is None:
                 return None
-            return ProjectRecord(p.id, p.title, p.status, p.deadline)
+            return ProjectRecord(
+                p.id, p.title, p.status, p.deadline,
+                notion_page_id=p.notion_page_id,
+            )
+
+    async def get_project(self, project_id: UUID) -> ProjectRecord | None:
+        async with self._sf() as s:
+            p = await s.get(Project, project_id)
+            if p is None:
+                return None
+            return ProjectRecord(
+                p.id, p.title, p.status, p.deadline,
+                notion_page_id=p.notion_page_id,
+            )
 
     async def create_task(
         self,
@@ -310,6 +323,12 @@ class SqlAlchemyRepo:
             p = await s.get(Project, project_id)
             if p is not None:
                 p.status = status
+
+    async def set_project_notion_page(self, project_id: UUID, page_id: str) -> None:
+        async with self._sf() as s, s.begin():
+            p = await s.get(Project, project_id)
+            if p is not None:
+                p.notion_page_id = page_id
 
     async def add_audit(
         self,
@@ -461,6 +480,33 @@ class SqlAlchemyRepo:
             )
             return [pv.payload for pv in rows]
 
+    async def reset_all_plans(self) -> list[str]:
+        """Supersede every committed plan and cancel its project (zeroes load).
+
+        Load is the sum of committed-plan allocations, so superseding them all
+        drops every person's load to zero. Returns the Notion master-card page
+        ids of the affected projects so the caller can archive them and keep the
+        DB↔Notion mirror consistent.
+        """
+        async with self._sf() as s, s.begin():
+            committed = list(
+                await s.scalars(
+                    select(PlanVersion).where(PlanVersion.status == "committed")
+                )
+            )
+            project_ids = {pv.project_id for pv in committed}
+            for pv in committed:
+                pv.status = "superseded"
+            pages: list[str] = []
+            for pid in project_ids:
+                proj = await s.get(Project, pid)
+                if proj is None:
+                    continue
+                proj.status = "cancelled"
+                if proj.notion_page_id:
+                    pages.append(proj.notion_page_id)
+        return pages
+
     async def list_task_dependencies(self) -> list[DomainDependency]:
         async with self._sf() as s:
             rows = await s.scalars(select(DependencyModel))
@@ -525,15 +571,17 @@ class SqlAlchemyRepo:
             )
             id_to_ord = {tt.id: tt.ord for tt in tt_rows}
 
+            # Order assignees by priority (0 = highest) so the solver's
+            # priority-aware executor pick sees the binding in the right order.
             assignees: dict[UUID, list[UUID]] = {}
             for row in await s.scalars(
-                select(TemplateTaskAssignee).where(
-                    TemplateTaskAssignee.template_task_id.in_(id_to_ord)
-                )
+                select(TemplateTaskAssignee)
+                .where(TemplateTaskAssignee.template_task_id.in_(id_to_ord))
+                .order_by(TemplateTaskAssignee.priority, TemplateTaskAssignee.strictness)
             ):
                 assignees.setdefault(row.template_task_id, []).append(row.person_id)
 
-            deps: dict[UUID, list[tuple[int, str]]] = {}
+            deps: dict[UUID, list[tuple[int, str, int]]] = {}
             for dep_row in await s.scalars(
                 select(TemplateDependency).where(
                     TemplateDependency.template_task_id.in_(id_to_ord)
@@ -542,7 +590,7 @@ class SqlAlchemyRepo:
                 dep_ord = id_to_ord.get(dep_row.depends_on_id)
                 if dep_ord is not None:
                     deps.setdefault(dep_row.template_task_id, []).append(
-                        (dep_ord, dep_row.link_type)
+                        (dep_ord, dep_row.link_type, dep_row.lag_working_days)
                     )
 
             specs = tuple(
@@ -551,10 +599,12 @@ class SqlAlchemyRepo:
                     name=tt.name,
                     duration_hours=tt.duration_hours,
                     allowed_person_ids=tuple(assignees.get(tt.id, ())),
-                    depends_on_ords=tuple(o for o, _ in deps.get(tt.id, ())),
-                    link_types=tuple(lt for _, lt in deps.get(tt.id, ())),
+                    depends_on_ords=tuple(o for o, _, _ in deps.get(tt.id, ())),
+                    link_types=tuple(lt for _, lt, _ in deps.get(tt.id, ())),
+                    dep_lags=tuple(lag for _, _, lag in deps.get(tt.id, ())),
                     is_splittable=bool(tt.is_splittable),
-                    allow_two_assignees=bool(tt.allow_two_assignees),
+                    pair_mode=tt.pair_mode,
+                    duration_is_window=bool(tt.duration_is_window),
                 )
                 for tt in tt_rows
             )
@@ -585,6 +635,9 @@ class SqlAlchemyRepo:
                         status="not_done",
                         source=t.source,
                         required_skills=list(t.required_skills),
+                        is_splittable=t.is_splittable,
+                        pair_mode=t.pair_mode,
+                        duration_is_window=t.duration_is_window,
                     )
                 )
             # Tasks must hit the DB before their assignments: assignments.task_id
@@ -593,14 +646,19 @@ class SqlAlchemyRepo:
             await s.flush()
             for t in tasks:
                 a = by_task.get(t.id)
-                if a is not None:
-                    s.add(
-                        Assignment(
-                            task_id=t.id,
-                            person_id=a.person_id,
-                            hours=t.duration_hours,
-                        )
+                if a is None:
+                    continue
+                # One row per distinct person; a required pair yields two rows.
+                # A window task has no allocations — record its single assignee.
+                hours_by_person: dict[UUID, int] = {}
+                for al in a.allocations:
+                    hours_by_person[al.person_id] = (
+                        hours_by_person.get(al.person_id, 0) + al.hours
                     )
+                if not hours_by_person:
+                    hours_by_person[a.person_id] = t.duration_hours
+                for person_id, hours in hours_by_person.items():
+                    s.add(Assignment(task_id=t.id, person_id=person_id, hours=hours))
 
     async def list_audit(self, limit: int = 50, offset: int = 0) -> list[AuditRecord]:
         async with self._sf() as s:

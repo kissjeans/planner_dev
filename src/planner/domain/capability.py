@@ -51,6 +51,7 @@ def suggest_assignees(
     *,
     include_external: bool = False,
     limit: int | None = None,
+    restrict_to: frozenset[UUID] | None = None,
 ) -> tuple[AssigneeSuggestion, ...]:
     """Rank candidates for a task by skill coverage, then by who is freer.
 
@@ -58,6 +59,11 @@ def suggest_assignees(
     (1.0 when nothing is required — then ranking is purely by load). Matching is
     case-insensitive. External people (outsource pool, spec 2) are excluded
     unless ``include_external`` is set. Ties break by lower load, then name.
+
+    ``restrict_to`` is the hard executor binding (spec 4.1 / R4): when given and
+    non-empty, only those people are considered and skills merely rank *within*
+    the binding — an explicit binding always beats a better skill match. ``None``
+    or an empty set means "no binding", so all candidates are ranked by skill.
     """
     required = list(dict.fromkeys(s.strip() for s in required_skills if s.strip()))
     # Dedupe numerator and denominator on the SAME (normalized) basis so coverage
@@ -69,7 +75,11 @@ def suggest_assignees(
 
     suggestions: list[AssigneeSuggestion] = []
     for c in candidates:
-        if c.is_external and not include_external:
+        if restrict_to and c.person_id not in restrict_to:
+            continue  # hard binding wins over skills (R4)
+        # An explicit binding overrides the open-pool external exclusion: a bound
+        # external (e.g. the design resource) stays in.
+        if c.is_external and not include_external and not restrict_to:
             continue
         have = {_norm(s) for s in c.skills}
         covered_keys = [k for k in required_keys if k in have]

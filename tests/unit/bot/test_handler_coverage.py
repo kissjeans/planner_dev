@@ -166,6 +166,10 @@ class _ConfirmRepo:
     async def add_audit(self, *a) -> None:  # type: ignore[no-untyped-def]
         self.audits.append(a)
 
+    async def set_project_status(self, project_id, status) -> None:  # type: ignore[no-untyped-def]
+        self.project_statuses = getattr(self, "project_statuses", {})
+        self.project_statuses[project_id] = status
+
     async def list_people(self):  # type: ignore[no-untyped-def]
         return []
 

@@ -62,6 +62,25 @@ async def test_register_jobs_functions_match_deps():
 
 
 @pytest.mark.asyncio
+async def test_daily_summary_fires_at_10_00_moscow_on_weekdays():
+    """R7: daily summary at 10:00 Europe/Moscow, weekdays."""
+    sched = _FakeScheduler()
+    register_jobs(
+        sched,
+        SchedulerDeps(
+            send_daily_summary=_noop,
+            refresh_calendar_snapshot=_noop,
+            timezone="Europe/Moscow",
+        ),
+    )
+    daily = next(j for j in sched.jobs if j["id"] == "daily_load_summary")
+    trigger = str(daily["trigger"])
+    assert "hour='10'" in trigger
+    assert "minute='0'" in trigger
+    assert "day_of_week='mon-fri'" in trigger
+
+
+@pytest.mark.asyncio
 async def test_register_jobs_adds_error_listener_and_misfire():
     sched = _FakeScheduler()
     register_jobs(

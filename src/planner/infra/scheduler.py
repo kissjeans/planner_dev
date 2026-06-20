@@ -31,7 +31,7 @@ def register_jobs(scheduler: Any, deps: SchedulerDeps) -> None:
     scheduler.add_job(
         deps.send_daily_summary,
         CronTrigger(
-            day_of_week="mon-fri", hour=9, minute=30, timezone=deps.timezone
+            day_of_week="mon-fri", hour=10, minute=0, timezone=deps.timezone
         ),
         id="daily_load_summary",
         replace_existing=True,

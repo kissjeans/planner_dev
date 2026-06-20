@@ -34,7 +34,6 @@ _WRITE_TOOLS = {
     "set_vacation",
     "replan",
     "assign_task",
-    "confirm_plan",
 }
 
 
@@ -296,7 +295,6 @@ async def test_what_if_returns_string_without_writing():
     ("set_vacation", {"person": "Андрей", "day_from": "2026-07-01", "day_to": "2026-07-05"}),
     ("replan", {}),
     ("assign_task", {"task_ref": "дизайн", "person": "Андрей"}),
-    ("confirm_plan", {}),
 ])
 @pytest.mark.asyncio
 async def test_write_tools_blocked_for_non_admin(name, args):
@@ -442,22 +440,12 @@ async def test_plan_project_proposes_and_stashes_pv_id():
 
 
 @pytest.mark.asyncio
-async def test_confirm_plan_uses_stashed_pv_when_id_omitted():
-    pv = PlanVersionRecord(uuid4(), uuid4(), "proposed", {})
-    repo = FakeRepo(plan_versions={pv.id: pv})
-    box = _box(repo, actor=_ADMIN)
-    box.last_proposed_pv_id = pv.id
-    out = await box.execute("confirm_plan", {})
-    assert isinstance(out, str)
-    assert any(t[0] == pv.id for t in repo.transitions)
-
-
-@pytest.mark.asyncio
-async def test_confirm_plan_without_any_target_is_friendly():
-    repo = FakeRepo()
-    out = await _box(repo, actor=_ADMIN).execute("confirm_plan", {})
-    assert isinstance(out, str)
-    assert repo.transitions == []
+async def test_agent_has_no_confirm_tool_commit_is_manager_gated():
+    """Committing is manager-only (inline ✅ button / typed «ок»). The agent must
+    NOT be able to commit a plan it just proposed (was auto-committing)."""
+    assert "confirm_plan" not in {t["name"] for t in TOOL_SCHEMAS}
+    out = await _box(FakeRepo(), actor=_ADMIN).execute("confirm_plan", {})
+    assert out == "Неизвестный инструмент confirm_plan."
 
 
 # --- Error handling + unknown tool ---------------------------------------

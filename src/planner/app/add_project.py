@@ -14,8 +14,15 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import networkx as nx
+import structlog
 
-from planner.app.ports import PersonRecord, ProjectRecord, RepoPort
+from planner.app.ports import (
+    PersonRecord,
+    ProjectRecord,
+    ProjectSinkPort,
+    RepoPort,
+    SinkProject,
+)
 from planner.domain.intent import AddProjectIntent
 from planner.domain.models import (
     Assignment,
@@ -30,6 +37,8 @@ from planner.domain.models import (
 )
 from planner.domain.solver.ports import SolverPort
 
+log = structlog.get_logger(__name__)
+
 
 class InvalidProjectError(ValueError):
     """Raised when the intent fails domain validation (spec 7.1 step 1)."""
@@ -42,11 +51,13 @@ class TemplateTaskSpec:
     ord: int
     name: str
     duration_hours: int
-    allowed_person_ids: tuple[UUID, ...]
+    allowed_person_ids: tuple[UUID, ...]  # priority-ordered (index 0 = highest)
     depends_on_ords: tuple[int, ...] = ()
     link_types: tuple[str, ...] = ()  # parallel to depends_on_ords; default 'FS'
+    dep_lags: tuple[int, ...] = ()  # parallel to depends_on_ords; working-day lag
     is_splittable: bool = False
-    allow_two_assignees: bool = False
+    pair_mode: str = "none"  # 'none' | 'optional' | 'required'
+    duration_is_window: bool = False
 
 
 @dataclass(frozen=True)
@@ -62,6 +73,7 @@ class AddProjectResult:
     plan: PlanResult
     tasks: tuple[Task, ...]  # instantiated tasks (for name maps / rendering)
     earliest_end: date | None  # backward-mode critical-path end + buffer (None in forward mode)
+    notion_page_id: str | None = None  # Notion master-card id (None when Notion off)
 
 
 def instantiate_template(
@@ -81,7 +93,8 @@ def instantiate_template(
             allowed_person_ids=spec.allowed_person_ids,
             project_id=project_id,
             is_splittable=spec.is_splittable,
-            allow_two_assignees=spec.allow_two_assignees,
+            pair_mode=spec.pair_mode,
+            duration_is_window=spec.duration_is_window,
             source="template",
         )
         for spec in template.tasks
@@ -90,11 +103,13 @@ def instantiate_template(
     for spec in template.tasks:
         for i, dep_ord in enumerate(spec.depends_on_ords):
             link = spec.link_types[i] if i < len(spec.link_types) else "FS"
+            lag = spec.dep_lags[i] if i < len(spec.dep_lags) else 0
             deps.append(
                 Dependency(
                     task_id=ord_to_id[spec.ord],
                     depends_on_id=ord_to_id[dep_ord],
                     link_type=link,
+                    lag_working_days=lag,
                 )
             )
     return tasks, tuple(deps)
@@ -206,6 +221,7 @@ class AddProjectUseCase:
         today: date,
         existing_allocations: tuple[DayAllocation, ...] = (),
         day_overrides: tuple[DayOverride, ...] = (),
+        project_sink: ProjectSinkPort | None = None,
     ) -> AddProjectResult:
         title = intent.title.strip()
         if not title:
@@ -254,10 +270,29 @@ class AddProjectUseCase:
             actor.id, "add_project", "project", project.id, {"title": title}
         )
 
+        # Best-effort Notion master card (C3 / R6): never blocks project creation.
+        notion_page_id: str | None = None
+        if project_sink is not None:
+            try:
+                notion_page_id = await project_sink.create_card(
+                    SinkProject(
+                        title=title,
+                        template_code=intent.template_code,
+                        task_names=tuple(t.name for t in tasks),
+                        deadline=intent.deadline,
+                    )
+                )
+                if notion_page_id:
+                    await self._repo.set_project_notion_page(project.id, notion_page_id)
+            except Exception:  # noqa: BLE001 — Notion is a best-effort mirror
+                log.warning("project_card_failed", project_id=str(project.id))
+                notion_page_id = None
+
         return AddProjectResult(
             project=project,
             plan_version_id=pv.id,
             plan=plan,
             tasks=tasks,
             earliest_end=earliest_end,
+            notion_page_id=notion_page_id,
         )

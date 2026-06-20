@@ -39,7 +39,13 @@ from planner.app.confirm_plan import (
 )
 from planner.app.explain_plan import ExplainPlanUseCase
 from planner.app.load_summary import DEFAULT_DAYS
-from planner.app.ports import PersonRecord, RepoPort, TaskMeta, TaskSinkPort
+from planner.app.ports import (
+    PersonRecord,
+    ProjectSinkPort,
+    RepoPort,
+    TaskMeta,
+    TaskSinkPort,
+)
 from planner.app.suggest_assignees import SuggestAssigneesUseCase
 from planner.bot.states import PlanEditState
 from planner.domain.intent import (
@@ -80,6 +86,7 @@ async def build_add_project_reply(
     actor_record: PersonRecord,
     today: date,
     explain_uc: ExplainPlanUseCase | None = None,
+    project_sink: ProjectSinkPort | None = None,
 ) -> tuple[str, UUID | None]:
     """Run AddProject, return (text, plan_version_id). pv_id is None on error."""
     template = await repo.get_project_template(intent.template_code)
@@ -103,6 +110,7 @@ async def build_add_project_reply(
             template,
             today=today,
             existing_allocations=tuple(existing),
+            project_sink=project_sink,
         )
     except InvalidProjectError as exc:
         return f"Не могу создать проект: {exc}", None
@@ -118,6 +126,9 @@ async def build_add_project_reply(
         earliest_end=result.earliest_end,
     )
     text = f"Проект «{result.project.title}» — предложенный план:\n{summary}"
+    if result.notion_page_id:
+        url = f"https://www.notion.so/{result.notion_page_id.replace('-', '')}"
+        text += f"\n\n🔗 Notion (мастер-карточка): {url}"
     return text, result.plan_version_id
 
 
@@ -316,6 +327,7 @@ async def _dispatch_intent(
     last_pv_id: UUID | None,
     edit_state: FSMContext | None,
     task_sink: TaskSinkPort | None,
+    project_sink: ProjectSinkPort | None = None,
 ) -> UUID | None:
     """Execute a single parsed intent (the isinstance dispatch chain).
 
@@ -384,6 +396,7 @@ async def _dispatch_intent(
             actor_record=actor_record,
             today=date.today(),
             explain_uc=explain_uc,
+            project_sink=project_sink,
         )
         kb = _plan_keyboard(pv_id) if pv_id is not None else None
         await message.answer(reply_text, reply_markup=kb)
@@ -441,6 +454,7 @@ async def _handle_text(
     last_pv_id: UUID | None = None,
     edit_state: FSMContext | None = None,
     task_sink: TaskSinkPort | None = None,
+    project_sink: ProjectSinkPort | None = None,
     history: ChatHistory | None = None,
     agent: PlannerAgent | None = None,
 ) -> UUID | None:
@@ -455,6 +469,27 @@ async def _handle_text(
             "Попроси администратора добавить тебя."
         )
         return None
+    # Manager-gated commit: a bare «ок»/«подтверждаю» commits the last proposed
+    # plan deterministically (the agent has no confirm tool). The proposed id is
+    # stashed in FSM after each proposal below.
+    if (
+        confirm_uc is not None
+        and actor_record is not None
+        and edit_state is not None
+        and _is_confirm_phrase(text)
+    ):
+        data = await edit_state.get_data()
+        pending = _parse_pv_id(data.get("pending_pv_id")) or last_pv_id
+        if pending is not None:
+            try:
+                await confirm_uc.execute(pending, actor_record)
+                await message.answer("✅ План зафиксирован.")
+            except (PlanNotFoundError, PlanNotProposedError):
+                await message.answer("Этот план уже зафиксирован.")
+            # End any edit loop and drop the stashed proposal so a later «ок»
+            # cannot re-commit it.
+            await edit_state.clear()
+            return None
     known_people: tuple[str, ...] = ()
     known_projects: tuple[str, ...] = ()
     if repo is not None:
@@ -487,6 +522,7 @@ async def _handle_text(
             actor=actor,
             actor_record=actor_record,
             task_sink=task_sink,
+            project_sink=project_sink,
         )
         reply = await agent.run(text, ctx, toolbox)
         # Missing a key field → drive deterministic button clarify, not free text.
@@ -498,14 +534,20 @@ async def _handle_text(
         # Captures → show the deterministic confirmations verbatim (clean layout,
         # one-task merges), not the model's free narration. Otherwise its text.
         base = (
-            "\n\n".join(reply.captured_replies)
-            if reply.captured_replies else reply.text
+            "\n\n".join(r for r in reply.captured_replies if r.strip())
+            if any(r.strip() for r in reply.captured_replies) else reply.text
         )
         final_text = _append_notion_links(base, reply.notion_urls)
+        # Never send an empty message (Telegram rejects it → silent failure).
+        if not final_text.strip():
+            final_text = "Готово."
         kb = _plan_keyboard(reply.proposed_pv_id) if reply.proposed_pv_id else None
         await message.answer(final_text, reply_markup=kb)
         if history is not None and message.chat is not None:
             history.record(message.chat.id, final_text)
+        if reply.proposed_pv_id is not None and edit_state is not None:
+            # Stash so a later typed «ок» can confirm this proposal (button too).
+            await edit_state.update_data(pending_pv_id=str(reply.proposed_pv_id))
         return reply.proposed_pv_id
     # A compound message ("какая загрузка у Андрея? Если свободно, поставь
     # задачу") carries several actions — dispatch EACH in order. Single-action
@@ -536,6 +578,7 @@ async def handle_voice(
     explain_uc: ExplainPlanUseCase | None = None,
     confirm_uc: ConfirmPlanUseCase | None = None,
     task_sink: TaskSinkPort | None = None,
+    project_sink: ProjectSinkPort | None = None,
     state: FSMContext | None = None,
     history: ChatHistory | None = None,
     agent: PlannerAgent | None = None,
@@ -575,7 +618,8 @@ async def handle_voice(
     await _handle_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
-        confirm_uc=confirm_uc, edit_state=state, task_sink=task_sink, history=history,
+        confirm_uc=confirm_uc, edit_state=state, task_sink=task_sink,
+        project_sink=project_sink, history=history,
         agent=agent,
     )
 
@@ -591,6 +635,7 @@ async def handle_task(
     explain_uc: ExplainPlanUseCase | None = None,
     confirm_uc: ConfirmPlanUseCase | None = None,
     task_sink: TaskSinkPort | None = None,
+    project_sink: ProjectSinkPort | None = None,
     state: FSMContext | None = None,
     history: ChatHistory | None = None,
     agent: PlannerAgent | None = None,
@@ -602,7 +647,8 @@ async def handle_task(
     await _handle_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
-        confirm_uc=confirm_uc, edit_state=state, task_sink=task_sink, history=history,
+        confirm_uc=confirm_uc, edit_state=state, task_sink=task_sink,
+        project_sink=project_sink, history=history,
         agent=agent,
     )
 
@@ -619,6 +665,7 @@ async def handle_edit_text(
     explain_uc: ExplainPlanUseCase | None = None,
     confirm_uc: ConfirmPlanUseCase | None = None,
     task_sink: TaskSinkPort | None = None,
+    project_sink: ProjectSinkPort | None = None,
     history: ChatHistory | None = None,
 ) -> None:
     """FSM edit loop (spec flow step 14 / scenario J).
@@ -641,7 +688,7 @@ async def handle_edit_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
         confirm_uc=confirm_uc, last_pv_id=old_pv_id, edit_state=state,
-        task_sink=task_sink, history=history,
+        task_sink=task_sink, project_sink=project_sink, history=history,
     )
     # The edit produced a fresh proposal: retire the one it replaces so the
     # project list does not accumulate near-duplicate planning rows, then
@@ -667,6 +714,23 @@ def _parse_pv_id(raw: object) -> UUID | None:
         return None
 
 
+_CONFIRM_PHRASES = frozenset(
+    {
+        "ок", "окей", "ok", "оk", "да", "ага", "подтверждаю", "подтверди",
+        "подтвердить", "фиксируй", "зафиксируй", "го", "yes",
+    }
+)
+
+
+def _is_confirm_phrase(text: str) -> bool:
+    """True for a bare manager confirmation («ок», «подтверждаю», …).
+
+    Kept deliberately tight (whole-message match) so a real request that merely
+    starts with «ок, …» is NOT mistaken for a confirmation.
+    """
+    return text.strip().casefold().rstrip("!. ") in _CONFIRM_PHRASES
+
+
 @router.message(F.text & ~F.text.startswith("/"))
 async def handle_mention_or_dm(
     message: Message,
@@ -678,6 +742,7 @@ async def handle_mention_or_dm(
     explain_uc: ExplainPlanUseCase | None = None,
     confirm_uc: ConfirmPlanUseCase | None = None,
     task_sink: TaskSinkPort | None = None,
+    project_sink: ProjectSinkPort | None = None,
     state: FSMContext | None = None,
     history: ChatHistory | None = None,
     agent: PlannerAgent | None = None,
@@ -708,6 +773,7 @@ async def handle_mention_or_dm(
     await _handle_text(
         message, text, parser, actor,
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
-        confirm_uc=confirm_uc, edit_state=state, task_sink=task_sink, history=history,
+        confirm_uc=confirm_uc, edit_state=state, task_sink=task_sink,
+        project_sink=project_sink, history=history,
         agent=agent,
     )

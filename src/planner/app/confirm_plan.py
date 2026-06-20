@@ -44,6 +44,8 @@ class ConfirmPlanUseCase:
         await self._repo.add_audit(
             actor.id, "confirm_plan", "plan_version", plan_version_id, None
         )
+        # Reflect the commit on the project so the board stops showing 'planning'.
+        await self._repo.set_project_status(pv.project_id, "committed")
         return PlanVersionRecord(
             id=pv.id, project_id=pv.project_id, status="committed", payload=pv.payload
         )

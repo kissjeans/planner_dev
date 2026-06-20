@@ -15,7 +15,7 @@ from uuid import UUID
 import networkx as nx
 
 from planner.domain.calendar.ports import WorkingCalendar
-from planner.domain.calendar.rules import first_working_day
+from planner.domain.calendar.rules import first_working_day, nth_working_day
 from planner.domain.models import (
     Assignment,
     DayAllocation,
@@ -37,6 +37,8 @@ from planner.domain.units import hours_to_working_days
 
 # Planning horizon: how far ahead the greedy search is allowed to look.
 HORIZON_DAYS = 365
+# Nominal working-day length for window tasks (calendar span = hours / DAY_HOURS).
+DAY_HOURS = 8
 
 
 class CapacityIndex:
@@ -88,7 +90,12 @@ def build_dag(tasks: list[Task], deps: list[Dependency]) -> nx.DiGraph:
     for t in tasks:
         g.add_node(t.id)
     for d in deps:
-        g.add_edge(d.depends_on_id, d.task_id, link_type=d.link_type)
+        g.add_edge(
+            d.depends_on_id,
+            d.task_id,
+            link_type=d.link_type,
+            lag=d.lag_working_days,
+        )
     return g
 
 
@@ -99,14 +106,29 @@ def _earliest_start(
     horizon_start: date,
     calendar: WorkingCalendar,
 ) -> date:
-    """Raise the start past resolved dependencies (FS: after end; SS: at start)."""
+    """Raise the start past resolved dependencies (FS: after end; SS: at start).
+
+    A positive ``lag`` shifts the successor that many working days later: an
+    FS+5 edge starts the successor on the 5th working day after the predecessor
+    ends. ``lag == 0`` keeps the standard link (next working day for FS).
+    """
     est = horizon_start
     for dep_id in graph.predecessors(task.id):
         a = assignments.get(dep_id)
         if a is None:
             continue
-        link = graph.edges[dep_id, task.id]["link_type"]
-        cand = calendar.next_working_day(a.end_date) if link == "FS" else a.start_date
+        edge = graph.edges[dep_id, task.id]
+        base = (
+            calendar.next_working_day(a.end_date)
+            if edge["link_type"] == "FS"
+            else a.start_date
+        )
+        lag = edge.get("lag", 0)
+        cand = (
+            nth_working_day(calendar, base, lag)
+            if lag > 0
+            else first_working_day(calendar, base)
+        )
         if cand > est:
             est = cand
     return est
@@ -178,6 +200,60 @@ def _allocate(
     return _allocate_single(task, person, earliest, calendar, idx, horizon_limit)
 
 
+def _allocate_window(
+    task: Task,
+    earliest: date,
+    calendar: WorkingCalendar,
+) -> tuple[tuple[DayAllocation, ...], date, date]:
+    """Place a fixed calendar-window task (external resource).
+
+    Spans ``ceil(duration_hours / DAY_HOURS)`` working days from ``earliest`` and
+    consumes no team capacity (empty allocations), so it never triggers an
+    overload and never competes for a person's hours.
+    """
+    span = max(1, -(-task.duration_hours // DAY_HOURS))  # ceil division
+    start = first_working_day(calendar, earliest)
+    end = nth_working_day(calendar, start, span)
+    return (), start, end
+
+
+def _allocate_pair(
+    task: Task,
+    p1: Person,
+    p2: Person,
+    earliest: date,
+    calendar: WorkingCalendar,
+    idx: CapacityIndex,
+    horizon_limit: date,
+) -> tuple[tuple[DayAllocation, ...], date, date]:
+    """Place a required pair on the earliest day where BOTH people fit.
+
+    No speedup: each person occupies the full duration on the same day (the
+    calendar span is not shortened by having two assignees). Used for tasks like
+    the joint proof-read that must be done together (spec §7, R2).
+    """
+    day = first_working_day(calendar, earliest)
+    placed = None
+    while day <= horizon_limit:
+        if (
+            calendar.is_working_day(day)
+            and idx.remaining(p1.id, day) >= task.duration_hours
+            and idx.remaining(p2.id, day) >= task.duration_hours
+        ):
+            placed = day
+            break
+        day += timedelta(days=1)
+    if placed is None:
+        # Never both-fit within the horizon: dump on the earliest day and let
+        # the overload scan flag it.
+        placed = first_working_day(calendar, earliest)
+    allocs = (
+        DayAllocation(p1.id, placed, task.duration_hours),
+        DayAllocation(p2.id, placed, task.duration_hours),
+    )
+    return allocs, placed, placed
+
+
 class GreedySolver:
     """Forward greedy scheduler. Implements :class:`SolverPort`."""
 
@@ -224,16 +300,29 @@ class GreedySolver:
                 if pid in people_by_id
             ] or list(req.people)
 
-            best: tuple[tuple[DayAllocation, ...], date, date, Person] | None = None
-            for person in allowed:
-                allocs, start, end = _allocate(
-                    task, person, earliest, self.calendar, idx, horizon_limit
+            if task.duration_is_window:
+                # Fixed calendar window (external resource): no capacity, no race.
+                allocs, start, end = _allocate_window(task, earliest, self.calendar)
+                person = allowed[0]
+            elif task.pair_mode == "required" and len(allowed) >= 2:
+                allocs, start, end = _allocate_pair(
+                    task, allowed[0], allowed[1], earliest,
+                    self.calendar, idx, horizon_limit,
                 )
-                if best is None or end < best[2]:
-                    best = (allocs, start, end, person)
+                person = allowed[0]
+            else:
+                # ``allowed`` is priority-ordered; pick the earliest placement and
+                # break ties toward higher priority (strict ``<`` keeps the first).
+                best: tuple[tuple[DayAllocation, ...], date, date, Person] | None = None
+                for cand in allowed:
+                    allocs, start, end = _allocate(
+                        task, cand, earliest, self.calendar, idx, horizon_limit
+                    )
+                    if best is None or (start, end) < (best[1], best[2]):
+                        best = (allocs, start, end, cand)
+                assert best is not None
+                allocs, start, end, person = best
 
-            assert best is not None
-            allocs, start, end, person = best
             idx.occupy(allocs)
             assignments[tid] = Assignment(tid, person.id, start, end, allocs)
 

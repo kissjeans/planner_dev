@@ -93,6 +93,14 @@ def build_dispatcher(
     )
     dp["task_sink"] = sink
 
+    from planner.infra.notion.project import NotionProjectSink, NullProjectSink
+    project_sink = (
+        NotionProjectSink(settings.notion_token, settings.notion_parent_page_id)
+        if settings.notion_token and settings.notion_parent_page_id
+        else NullProjectSink()
+    )
+    dp["project_sink"] = project_sink
+
     errors_mw = ErrorBoundaryMiddleware()
     dp.message.middleware(errors_mw)
     dp.callback_query.middleware(errors_mw)
@@ -100,7 +108,7 @@ def build_dispatcher(
     throttle_mw = ThrottleMiddleware()
     dp.message.middleware(throttle_mw)
 
-    actor_mw = ActorMiddleware(settings.admin_id_set, repo)
+    actor_mw = ActorMiddleware(settings.admin_id_set, repo, settings.team_chat_id)
     dp.message.middleware(actor_mw)
     dp.callback_query.middleware(actor_mw)
 

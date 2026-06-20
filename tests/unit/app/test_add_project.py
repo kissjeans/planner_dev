@@ -72,6 +72,76 @@ def test_instantiate_template_two_calls_produce_disjoint_ids():
     assert {t.id for t in t1}.isdisjoint({t.id for t in t2})
 
 
+class _FakeProjectSink:
+    """Records create_card calls and returns a fixed page id."""
+
+    def __init__(self, page_id: str | None = "page-123") -> None:
+        self._page_id = page_id
+        self.created: list = []
+
+    async def create_card(self, project):
+        self.created.append(project)
+        return self._page_id
+
+    async def mark_task_done(self, page_id: str, task_name: str) -> bool:
+        return True
+
+
+@pytest.mark.asyncio
+async def test_execute_creates_notion_master_card_and_persists_page_id():
+    app_fake_repo = FakeRepo()
+    p = _person()
+    sink = _FakeProjectSink()
+    uc = AddProjectUseCase(app_fake_repo, _solver())
+
+    result = await uc.execute(
+        _intent(deadline=TODAY + timedelta(days=30)),
+        _actor(),
+        people=(p,),
+        template=_template(p.id),
+        today=TODAY,
+        project_sink=sink,
+    )
+
+    assert len(sink.created) == 1
+    card = sink.created[0]
+    assert card.title == "Альфа"
+    assert card.task_names == ("Бриф", "Дизайн")  # checklist mirrors the tasks
+    assert app_fake_repo.notion_pages[result.project.id] == "page-123"
+
+
+@pytest.mark.asyncio
+async def test_execute_without_sink_skips_card_and_still_succeeds():
+    app_fake_repo = FakeRepo()
+    p = _person()
+    uc = AddProjectUseCase(app_fake_repo, _solver())
+    result = await uc.execute(
+        _intent(), _actor(), people=(p,), template=_template(p.id), today=TODAY,
+    )
+    assert result.project.id in app_fake_repo.projects
+    assert app_fake_repo.notion_pages == {}
+
+
+@pytest.mark.asyncio
+async def test_card_creation_failure_does_not_block_project():
+    class _BoomSink:
+        async def create_card(self, project):
+            raise RuntimeError("notion down")
+
+        async def mark_task_done(self, page_id, task_name):
+            return False
+
+    app_fake_repo = FakeRepo()
+    p = _person()
+    uc = AddProjectUseCase(app_fake_repo, _solver())
+    result = await uc.execute(
+        _intent(), _actor(), people=(p,), template=_template(p.id),
+        today=TODAY, project_sink=_BoomSink(),
+    )
+    assert result.project.id in app_fake_repo.projects  # creation survived
+    assert app_fake_repo.notion_pages == {}
+
+
 @pytest.mark.asyncio
 async def test_execute_persists_proposed_plan_and_audit():
     app_fake_repo = FakeRepo()

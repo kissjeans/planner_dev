@@ -44,6 +44,39 @@ def test_coverage_capped_with_duplicate_variant_skills():
     assert s.missing_skills == ()
 
 
+# --- C4: explicit binding beats skills (R4) ---------------------------------
+
+
+def test_restrict_to_keeps_only_bound_people_despite_better_skill_match():
+    bound = _candidate("Bound", {"Копирайтинг"})  # weaker on skills
+    skilled = _candidate("Skilled", {"Копирайтинг", "Редактура"})  # better match
+    out = suggest_assignees(
+        ["Копирайтинг", "Редактура"],
+        [skilled, bound],
+        restrict_to=frozenset({bound.person_id}),
+    )
+    assert [s.name for s in out] == ["Bound"]
+
+
+def test_restrict_to_returns_bound_person_even_with_zero_skill_coverage():
+    bound = _candidate("Bound", set())  # no matching skills at all
+    other = _candidate("Other", {"Копирайтинг"})
+    out = suggest_assignees(
+        ["Копирайтинг"],
+        [other, bound],
+        restrict_to=frozenset({bound.person_id}),
+    )
+    assert [s.name for s in out] == ["Bound"]
+    assert out[0].coverage == 0.0
+
+
+def test_empty_restrict_to_falls_back_to_all_candidates():
+    a = _candidate("A", {"Копирайтинг"})
+    b = _candidate("B", {"Редактура"})
+    out = suggest_assignees(["Копирайтинг"], [a, b], restrict_to=None)
+    assert {s.name for s in out} == {"A", "B"}
+
+
 def test_matching_is_case_insensitive():
     c = _candidate("X", {"копирайтинг"})
     (s,) = suggest_assignees(["  КОПИРАЙТИНГ "], [c])

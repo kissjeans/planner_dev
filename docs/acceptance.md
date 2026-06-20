@@ -26,11 +26,12 @@ failing test, gets fixed, and is re-run.
 - [ ] **F. Voice input** — voice: «Прогони что-если, перенесём дедлайн Альфы на четверг» →
       bot transcribes, interprets, returns the diff.
 
-- [ ] **G. Read-only member** — non-admin sends `/task создать проект Z` → "Только админ
-      может править план."; same member `/load` → answered.
+- [ ] **G. Chat-member rights (R8)** — any participant of the team chat sends
+      `/task создать проект Z` → accepted and committable (no read-only tier);
+      a stranger outside the team chat is ignored.
 
-- [ ] **H. Daily summary** — 09:30 the bot posts team load + overloads to the chat.
-      _Verify:_ APScheduler job fired.
+- [ ] **H. Daily summary (R7)** — 10:00 Europe/Moscow the bot posts team load +
+      overloads to the chat. _Verify:_ APScheduler job fired.
 
 - [ ] **I. Audit** — open `/audit` in the admin → all changes shown with actor + time.
 
@@ -38,7 +39,31 @@ failing test, gets fixed, and is re-run.
       → bot accumulates edits into a new proposal → «ок» → commit.
       _Verify:_ committed plan matches the edits.
 
+## Cluster C — real-data edits (R1–R8, plan §10)
+
+Anchored on the real presales template (`seed/`) after `alembic upgrade head` +
+`python -m seed.load_seed`. R1–R5 are covered by automated tests
+(`tests/unit/domain/solver/test_greedy_c2.py`, `tests/unit/test_seed_yaml.py`,
+`tests/unit/domain/test_capability.py`); R6–R8 are verified in a live chat.
+
+- [ ] **R1. Feedback lag** — task #18 (Обратная связь) starts on the 5th working
+      day after #17 ends (RU calendar). _Auto:_ solver lag + seed dependency.
+- [ ] **R2. Required pair** — task #16 (Вычитка с Алисой) is scheduled strictly
+      for Тоня + Алиса on the same day; the duration is not shortened.
+- [ ] **R3. Priority executor** — the starred priority person is taken first when
+      a slot is free; the plan falls through to the next only when they are blocked.
+- [ ] **R4. Binding beats skills** — a hard-bound task goes to its bound person
+      even when someone else matches the required skills better.
+- [ ] **R5. Lite scope** — the lite template omits #5/#9/#11/#12 and drops the
+      #16→#12 dependency; planning does not fail.
+- [ ] **R6. Notion master card** — creating a project produces a Notion card
+      (task checklist + empty «Бриф» + «Идеи»); marking a task done ticks its box.
+      Degrades to a no-op when Notion is not configured.
+- [ ] **R7. Daily summary** — 10:00 Europe/Moscow load + overloads posted to chat.
+- [ ] **R8. Chat-member commit** — any team-chat participant can commit a plan;
+      overloads are soft (flagged, never auto-rebalanced).
+
 ## Pass criterion
 
-All A–J pass on the first run. Any failure is captured as a regression test
-before re-running.
+All A–J and R1–R8 pass on the first run. Any failure is captured as a regression
+test before re-running.

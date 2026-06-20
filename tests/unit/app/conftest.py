@@ -19,9 +19,13 @@ class FakeRepo:
         self.task_statuses: dict[UUID, str] = {}
         self.audits: list[tuple] = []
         self.saved_tasks: list[tuple] = []
+        self.notion_pages: dict[UUID, str] = {}
 
     async def set_task_status(self, task_id: UUID, status: str) -> None:
         self.task_statuses[task_id] = status
+
+    async def set_project_notion_page(self, project_id: UUID, page_id: str) -> None:
+        self.notion_pages[project_id] = page_id
 
     async def create_project(
         self, *, title, template_code, deadline, brief_return_date, actor_id,

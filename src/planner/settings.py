@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     notion_database_id: str = ""
     """Target Notion database id for captured tasks (optional)."""
 
+    notion_parent_page_id: str = ""
+    """Notion parent page id under which project master cards are created (C3).
+
+    Optional — master-card creation is disabled (keyless degrade) when empty."""
+
     # App
     timezone: str = "Europe/Moscow"
     """Application timezone"""

@@ -32,6 +32,29 @@ from planner.infra.db.models import (
 SEED_DIR = Path(__file__).parent
 
 
+def _pair_mode(entry: dict[str, object]) -> str:
+    """Resolve ``pair_mode``, falling back to the deprecated bool flag."""
+    mode = entry.get("pair_mode")
+    if mode in ("none", "optional", "required"):
+        return str(mode)
+    return "optional" if entry.get("allow_two_assignees") else "none"
+
+
+def _dep_fields(dep: object) -> tuple[int, str, int]:
+    """Normalize a dependency entry into ``(ord, link_type, lag_working_days)``.
+
+    Accepts either a bare ``int`` (FS, no lag) or a mapping
+    ``{ord, link?, lag_days?}``.
+    """
+    if isinstance(dep, dict):
+        return (
+            int(dep["ord"]),
+            str(dep.get("link", "FS")),
+            int(dep.get("lag_days", 0)),
+        )
+    return int(dep), "FS", 0  # type: ignore[arg-type]
+
+
 async def load_team(session: AsyncSession) -> dict[str, object]:
     """Load people from team.yaml. Returns {name: Person} map.
 
@@ -106,13 +129,16 @@ async def load_template(
     # Insert tasks
     ord_to_task: dict[int, TemplateTask] = {}
     for entry in raw["tasks"]:
+        pair_mode = _pair_mode(entry)
         task = TemplateTask(
             template_id=template.id,
             ord=entry["ord"],
             name=entry["name"],
             duration_hours=entry["duration_hours"],
+            duration_is_window=entry.get("duration_is_window", False),
             is_splittable=entry.get("is_splittable", False),
-            allow_two_assignees=entry.get("allow_two_assignees", False),
+            pair_mode=pair_mode,
+            allow_two_assignees=pair_mode != "none",
             optional_in_lite=entry.get("optional_in_lite", False),
         )
         session.add(task)
@@ -124,7 +150,9 @@ async def load_template(
     for entry in raw["tasks"]:
         task = ord_to_task[entry["ord"]]
 
-        for asgn in entry.get("assignees", []):
+        # Assignee list order encodes priority unless an explicit ``priority`` is
+        # given (0 = highest, chosen first by the solver when free).
+        for idx, asgn in enumerate(entry.get("assignees", [])):
             person = people_map.get(asgn["name"])
             if person is None:
                 raise ValueError(f"Unknown assignee '{asgn['name']}' in {tasks_yaml.name}")
@@ -133,10 +161,12 @@ async def load_template(
                     template_task_id=task.id,
                     person_id=person.id,
                     strictness=asgn["strictness"],
+                    priority=asgn.get("priority", idx),
                 )
             )
 
-        for dep_ord in entry.get("depends_on", []):
+        for dep in entry.get("depends_on", []):
+            dep_ord, link_type, lag = _dep_fields(dep)
             dep_task = ord_to_task.get(dep_ord)
             if dep_task is None:
                 raise ValueError(
@@ -146,7 +176,8 @@ async def load_template(
                 TemplateDependency(
                     template_task_id=task.id,
                     depends_on_id=dep_task.id,
-                    link_type="FS",
+                    link_type=link_type,
+                    lag_working_days=lag,
                 )
             )
 
