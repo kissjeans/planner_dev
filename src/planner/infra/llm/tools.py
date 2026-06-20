@@ -437,6 +437,9 @@ class ToolBox:
             actor_record=self._actor_record,
             today=date.today(),
             project_sink=self._project_sink,
+            # Collect the Notion link so the bot re-attaches it deterministically
+            # even if the model paraphrases the reply (strict rule).
+            notion_links=self.captured_notion_urls,
         )
         self.last_proposed_pv_id = pv_id
         return text

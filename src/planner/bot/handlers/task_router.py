@@ -87,8 +87,15 @@ async def build_add_project_reply(
     today: date,
     explain_uc: ExplainPlanUseCase | None = None,
     project_sink: ProjectSinkPort | None = None,
+    notion_links: list[str] | None = None,
 ) -> tuple[str, UUID | None]:
-    """Run AddProject, return (text, plan_version_id). pv_id is None on error."""
+    """Run AddProject, return (text, plan_version_id). pv_id is None on error.
+
+    The Notion master-card link is embedded in the text AND, when
+    ``notion_links`` is given, appended to it so the agent path can re-attach it
+    deterministically even after the model paraphrases the reply (strict rule:
+    a created project ALWAYS carries its Notion link).
+    """
     template = await repo.get_project_template(intent.template_code)
     if template is None:
         return f"Шаблон «{intent.template_code}» не найден.", None
@@ -128,7 +135,9 @@ async def build_add_project_reply(
     text = f"Проект «{result.project.title}» — предложенный план:\n{summary}"
     if result.notion_page_id:
         url = f"https://www.notion.so/{result.notion_page_id.replace('-', '')}"
-        text += f"\n\n🔗 Notion (мастер-карточка): {url}"
+        text += f"\n\n🔗 Notion (проект): {url}"
+        if notion_links is not None:
+            notion_links.append(url)
     return text, result.plan_version_id
 
 
