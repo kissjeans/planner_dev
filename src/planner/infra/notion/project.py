@@ -32,6 +32,9 @@ class NullProjectSink:
     async def mark_task_done(self, page_id: str, task_name: str) -> bool:
         return False
 
+    async def archive_card(self, page_id: str) -> bool:
+        return False
+
 
 def _checklist_blocks(task_names: tuple[str, ...]) -> list[dict[str, Any]]:
     return [
@@ -158,6 +161,21 @@ class NotionProjectSink:
                 return True
         except Exception as exc:  # noqa: BLE001 — best-effort one-way mirror
             log.warning("notion_mark_done_failed", error=str(exc))
+            return False
+
+    async def archive_card(self, page_id: str) -> bool:
+        """Soft-delete a master card (mirror of a plan reset)."""
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT_S) as c:
+                r = await c.patch(
+                    f"{_API}/pages/{page_id}",
+                    headers=self._headers(),
+                    json={"archived": True},
+                )
+                r.raise_for_status()
+                return True
+        except Exception as exc:  # noqa: BLE001 — best-effort mirror
+            log.warning("notion_archive_failed", error=str(exc))
             return False
 
 

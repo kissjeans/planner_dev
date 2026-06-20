@@ -77,13 +77,6 @@ def build_dispatcher(
     if solver is not None:
         dp["solver"] = solver
     dp["explain_uc"] = ExplainPlanUseCase(None)
-    if repo is not None:
-        dp["confirm_uc"] = ConfirmPlanUseCase(repo)
-    from planner.infra.stt.faster_whisper import FasterWhisperSTT
-    dp["stt"] = FasterWhisperSTT()
-
-    from planner.infra.history import ChatHistory
-    dp["history"] = ChatHistory()
 
     from planner.infra.notion.client import NotionTaskSink, NullTaskSink
     sink = (
@@ -92,6 +85,14 @@ def build_dispatcher(
         else NullTaskSink()
     )
     dp["task_sink"] = sink
+    if repo is not None:
+        # confirm_uc mirrors committed tasks to the Notion board via the sink.
+        dp["confirm_uc"] = ConfirmPlanUseCase(repo, sink)
+    from planner.infra.stt.faster_whisper import FasterWhisperSTT
+    dp["stt"] = FasterWhisperSTT()
+
+    from planner.infra.history import ChatHistory
+    dp["history"] = ChatHistory()
 
     from planner.infra.notion.project import NotionProjectSink, NullProjectSink
     project_sink = (
