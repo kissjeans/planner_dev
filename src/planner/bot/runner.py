@@ -90,6 +90,9 @@ def build_dispatcher(
     from planner.infra.history import ChatHistory
     dp["history"] = ChatHistory()
 
+    from planner.infra.voice_arm import VoiceArm
+    dp["voice_arm"] = VoiceArm()
+
     from planner.infra.notion.project import NotionProjectSink, NullProjectSink
     project_sink = (
         NotionProjectSink(settings.notion_token, settings.notion_parent_page_id)

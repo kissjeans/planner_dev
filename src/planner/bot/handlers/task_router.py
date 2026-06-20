@@ -65,6 +65,7 @@ from planner.domain.solver.ports import SolverPort
 from planner.infra.history import ChatHistory
 from planner.infra.llm.ports import ChatContext, IntentParserPort
 from planner.infra.stt.ports import STTPort
+from planner.infra.voice_arm import VoiceArm
 
 router = Router(name="task")
 _MAX_VOICE_BYTES = 20 * 1024 * 1024  # 20 MB cap on voice downloads
@@ -609,11 +610,20 @@ async def handle_voice(
     project_sink: ProjectSinkPort | None = None,
     state: FSMContext | None = None,
     history: ChatHistory | None = None,
+    voice_arm: VoiceArm | None = None,
     agent: PlannerAgent | None = None,
 ) -> None:
-    # In a group, only handle a voice addressed to the bot (caption @mention or
-    # reply to the bot) — never react to voices meant for other people.
-    if not await _is_addressed_in_group(message, getattr(message, "caption", None) or ""):
+    # In a group, only handle a voice addressed to the bot: reply to the bot, a
+    # caption @mention, or — since voices carry no caption — a recent @mention of
+    # the bot by this same user (mention-then-voice). Never react to others' voices.
+    addressed = await _is_addressed_in_group(message, getattr(message, "caption", None) or "")
+    if not addressed and voice_arm is not None:
+        chat = getattr(message, "chat", None)
+        fu = getattr(message, "from_user", None)
+        uid = fu.id if fu is not None else None
+        if chat is not None and uid is not None and voice_arm.is_armed(chat.id, uid):
+            addressed = True
+    if not addressed:
         return
     if stt is None or message.voice is None or message.bot is None:
         await message.answer("Голосовые сообщения не поддерживаются — напиши текстом.")
@@ -670,6 +680,7 @@ async def handle_task(
     project_sink: ProjectSinkPort | None = None,
     state: FSMContext | None = None,
     history: ChatHistory | None = None,
+    voice_arm: VoiceArm | None = None,
     agent: PlannerAgent | None = None,
 ) -> None:
     text = (message.text or "").partition(" ")[2].strip()
@@ -777,6 +788,7 @@ async def handle_mention_or_dm(
     project_sink: ProjectSinkPort | None = None,
     state: FSMContext | None = None,
     history: ChatHistory | None = None,
+    voice_arm: VoiceArm | None = None,
     agent: PlannerAgent | None = None,
 ) -> None:
     """Handle @mention in groups and direct messages in private chats (spec 8.1).
@@ -788,6 +800,14 @@ async def handle_mention_or_dm(
     # Group: only respond when the bot is @mentioned or replied-to (same rule as voice).
     if not await _is_addressed_in_group(message, raw):
         return
+    # Arm this user's next voice (mention-then-voice flow): once they address the
+    # bot by text in a group, their following voice is accepted for a short window.
+    if (
+        voice_arm is not None
+        and message.from_user is not None
+        and getattr(message.chat, "type", "private") != "private"
+    ):
+        voice_arm.arm(message.chat.id, message.from_user.id)
 
     # Strip leading @botname if present so parser gets clean text.
     text = raw.partition(" ")[2].strip() if raw.lower().startswith("@") else raw.strip()
