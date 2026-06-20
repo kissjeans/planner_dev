@@ -49,6 +49,9 @@ class _ReplanRepo:
     async def get_task_name_map(self):
         return dict(self.task_names)
 
+    async def get_task_project_map(self):
+        return dict(getattr(self, "task_projects", {}))
+
     async def list_task_dependencies(self):
         return list(self.dependencies)
 

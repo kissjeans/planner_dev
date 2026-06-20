@@ -206,6 +206,10 @@ class RepoPort(Protocol):
         """All task ids → names, for labelling the schedule/calendar views."""
         ...
 
+    async def get_task_project_map(self) -> dict[UUID, str]:
+        """All task ids → their project title (for overload/project reporting)."""
+        ...
+
     async def list_tasks_with_meta(self) -> list[TaskMeta]:
         """Persisted tasks joined with project + assignee — admin board source."""
         ...

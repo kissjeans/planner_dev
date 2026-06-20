@@ -9,7 +9,6 @@ edits if they want the new schedule to stick (spec: no silent overwrite).
 
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import date
 from typing import Any
 from uuid import UUID
@@ -74,27 +73,43 @@ async def _reconstruct_request(
 
 
 def _format_summary(
-    overloads: tuple[Any, ...], person_names: dict[UUID, str]
+    overloads: tuple[Any, ...],
+    person_names: dict[UUID, str],
+    assignments: tuple[Any, ...] = (),
+    task_project: dict[UUID, str] | None = None,
 ) -> str:
-    """Render the re-solve result: overloads per person, or an all-clear line."""
+    """Render the re-solve result: per overloaded day show who, the date and the
+    projects that person is busy on that day; or an all-clear line."""
     if not overloads:
         return (
             "🔄 Пересчитал план по текущим данным.\n"
             "✅ Всё помещается — перегрузок нет.\n\n"
             "Это предпросмотр, план не менялся."
         )
-    by_person: dict[UUID | None, int] = defaultdict(int)
-    for r in overloads:
-        by_person[r.person_id] += 1
+    task_project = task_project or {}
     lines = [
         "🔄 Пересчитал план по текущим данным.",
         "",
-        "⚠️ Перегрузки — дни, когда на человека приходится больше работы, "
-        "чем влезает в один день:",
+        "⚠️ Перегрузки — в эти дни у человека больше работы, чем влезает в день:",
     ]
-    for pid, count in by_person.items():
-        who = person_names.get(pid, "—") if pid is not None else "—"
-        lines.append(f"• {who} — {count} перегруженных дн.")
+    # Sort by person name, then date, so the list reads top-to-bottom calmly.
+    ordered = sorted(
+        overloads,
+        key=lambda r: (person_names.get(r.person_id, "—"), r.day or date.min),
+    )
+    for r in ordered:
+        who = person_names.get(r.person_id, "—") if r.person_id is not None else "—"
+        when = r.day.strftime("%d.%m.%Y") if r.day else "—"
+        projects = sorted(
+            {
+                task_project.get(a.task_id, "проект")
+                for a in assignments
+                for al in a.allocations
+                if al.person_id == r.person_id and al.day == r.day
+            }
+        )
+        proj = ", ".join(projects) if projects else "—"
+        lines.append(f"• {who} — {when}, проекты: {proj}")
     lines.append("")
     lines.append(
         "Это предпросмотр — план НЕ изменён. Чтобы применить новое "
@@ -112,7 +127,10 @@ async def build_replan_summary(
         return "Нечего пересчитывать — нет зафиксированных планов."
     result = solver.plan(request)
     person_names = {p.id: p.name for p in request.people}
-    return _format_summary(result.overloads(), person_names)
+    task_project = await repo.get_task_project_map()
+    return _format_summary(
+        result.overloads(), person_names, result.assignments, task_project
+    )
 
 
 @router.message(Command("replan"))

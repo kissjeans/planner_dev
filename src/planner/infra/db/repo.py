@@ -380,6 +380,16 @@ class SqlAlchemyRepo:
             rows = await s.execute(select(Task.id, Task.name))
             return {tid: name for tid, name in rows}
 
+    async def get_task_project_map(self) -> dict[UUID, str]:
+        """Map task id → its project title (for overload/project reporting)."""
+        async with self._sf() as s:
+            rows = await s.execute(
+                select(Task.id, Project.title).join(
+                    Project, Task.project_id == Project.id
+                )
+            )
+            return {tid: title for tid, title in rows}
+
     async def list_tasks_with_meta(self) -> list[TaskMeta]:
         async with self._sf() as s:
             rows = await s.execute(
