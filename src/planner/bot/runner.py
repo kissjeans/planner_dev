@@ -15,10 +15,8 @@ from planner.bot.handlers import (
     load,
     replan,
     start,
-    suggest,
     task_router,
     vacation,
-    whatif,
 )
 from planner.bot.middlewares.errors import ErrorBoundaryMiddleware
 from planner.bot.middlewares.permissions import ActorMiddleware
@@ -34,9 +32,7 @@ BOT_COMMANDS: tuple[tuple[str, str], ...] = (
     ("start", "Привет и краткая справка"),
     ("task", "Новая задача или проект"),
     ("load", "Загрузка команды на 14 дней"),
-    ("whatif", "Сценарий «что-если» (без записи)"),
     ("vacation", "Оформить отпуск / выходной"),
-    ("suggest", "Кто может взять задачу по скиллам"),
     ("replan", "Пересчитать план по текущим данным"),
 )
 
@@ -119,8 +115,8 @@ def build_dispatcher(
     dp.include_router(clarify.router)
     dp.include_router(task_router.router)
     dp.include_router(load.router)
-    dp.include_router(suggest.router)
-    dp.include_router(whatif.router)
+    # /suggest and /whatif excluded from the bot (commands removed). Their helper
+    # functions stay importable (the agent's what_if tool reuses whatif helpers).
     dp.include_router(confirm.router)
     dp.include_router(vacation.router)
     dp.include_router(replan.router)
