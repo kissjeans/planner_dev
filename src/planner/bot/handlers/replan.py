@@ -43,11 +43,15 @@ async def _reconstruct_request(
         for a in payload.get("assignments", []):
             tid = UUID(a["task_id"])
             hours = sum(al["hours"] for al in a.get("allocations", []))
+            if hours == 0:
+                # Window / external resource (e.g. the design pool): no team
+                # capacity is consumed, so it must not show up as an overload.
+                continue
             tasks.append(
                 Task(
                     id=tid,
                     name=name_map.get(tid, "task"),
-                    duration_hours=max(hours, 1),
+                    duration_hours=hours,
                     allowed_person_ids=(UUID(a["person_id"]),),
                 )
             )
@@ -74,15 +78,28 @@ def _format_summary(
 ) -> str:
     """Render the re-solve result: overloads per person, or an all-clear line."""
     if not overloads:
-        return "Пересчёт готов: перегрузок нет — план сходится."
+        return (
+            "🔄 Пересчитал план по текущим данным.\n"
+            "✅ Всё помещается — перегрузок нет.\n\n"
+            "Это предпросмотр, план не менялся."
+        )
     by_person: dict[UUID | None, int] = defaultdict(int)
     for r in overloads:
         by_person[r.person_id] += 1
-    lines = ["Пересчёт готов. Возможные перегрузки:"]
+    lines = [
+        "🔄 Пересчитал план по текущим данным.",
+        "",
+        "⚠️ Перегрузки — дни, когда на человека приходится больше работы, "
+        "чем влезает в один день:",
+    ]
     for pid, count in by_person.items():
         who = person_names.get(pid, "—") if pid is not None else "—"
-        lines.append(f"• {who}: {count} дн.")
-    lines.append("План не изменён — внеси правки через /task, чтобы зафиксировать.")
+        lines.append(f"• {who} — {count} перегруженных дн.")
+    lines.append("")
+    lines.append(
+        "Это предпросмотр — план НЕ изменён. Чтобы применить новое "
+        "расписание, внеси правки через /task."
+    )
     return "\n".join(lines)
 
 
