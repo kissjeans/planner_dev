@@ -84,7 +84,7 @@ async def build_add_project_reply(
     *,
     repo: RepoPort,
     solver: SolverPort,
-    actor_record: PersonRecord,
+    actor_record: PersonRecord | None,
     today: date,
     explain_uc: ExplainPlanUseCase | None = None,
     project_sink: ProjectSinkPort | None = None,

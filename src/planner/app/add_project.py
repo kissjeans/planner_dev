@@ -214,7 +214,7 @@ class AddProjectUseCase:
     async def execute(
         self,
         intent: AddProjectIntent,
-        actor: PersonRecord,
+        actor: PersonRecord | None,
         people: tuple[Person, ...],
         template: ProjectTemplate,
         *,
@@ -253,21 +253,23 @@ class AddProjectUseCase:
             else None
         )
 
+        # Author may be unlinked (any chat participant can create) — actor_id None.
+        actor_id = actor.id if actor is not None else None
         project = await self._repo.create_project(
             title=title,
             template_code=intent.template_code,
             deadline=intent.deadline,
             brief_return_date=intent.brief_return_date,
-            actor_id=actor.id,
+            actor_id=actor_id,
             project_id=project_id,
         )
         await self._repo.save_project_tasks(project.id, tasks, plan.assignments)
 
         pv = await self._repo.save_plan_version(
-            project.id, "proposed", serialize_plan(plan), actor.id
+            project.id, "proposed", serialize_plan(plan), actor_id
         )
         await self._repo.add_audit(
-            actor.id, "add_project", "project", project.id, {"title": title}
+            actor_id, "add_project", "project", project.id, {"title": title}
         )
 
         # Best-effort Notion master card (C3 / R6): never blocks project creation.

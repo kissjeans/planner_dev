@@ -423,8 +423,8 @@ class ToolBox:
         from planner.bot.handlers.task_router import build_add_project_reply
         from planner.domain.intent import AddProjectIntent
 
-        if self._actor_record is None:
-            return "Не удалось определить автора — попроси админа добавить тебя."
+        # Any chat participant can create a project — an unlinked author is fine
+        # (actor_id stays None). The write-gate already ran in execute().
         intent = AddProjectIntent(
             title=args["title"],
             template_code=args["template"],
