@@ -39,9 +39,11 @@ class ConfirmPlanUseCase:
         self._sink = task_sink
 
     async def execute(
-        self, plan_version_id: UUID, actor: PersonRecord
+        self, plan_version_id: UUID, actor: PersonRecord | None
     ) -> PlanVersionRecord:
-        if not actor.is_admin:
+        # Any chat participant can confirm (membership already gates upstream in
+        # the handler). A linked admin record is honoured but not required.
+        if actor is not None and not actor.is_admin:
             raise PermissionError("Только админ может подтверждать план.")
 
         pv = await self._repo.get_plan_version(plan_version_id)
@@ -57,7 +59,8 @@ class ConfirmPlanUseCase:
             raise PlanNotProposedError(current.status if current else "missing")
 
         await self._repo.add_audit(
-            actor.id, "confirm_plan", "plan_version", plan_version_id, None
+            actor.id if actor is not None else None,
+            "confirm_plan", "plan_version", plan_version_id, None,
         )
         # Reflect the commit on the project so the board stops showing 'planning'.
         await self._repo.set_project_status(pv.project_id, "committed")

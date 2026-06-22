@@ -48,9 +48,9 @@ async def handle_confirm(
 
     assert cb.data is not None
     pv_id = UUID(cb.data.split(":", 1)[1])
-    if confirm_uc is None or actor_record is None:
+    if confirm_uc is None:
         await cb.answer("База данных не подключена.")
-        return
+        return  # actor_record may be None — any chat member can confirm
 
     try:
         await confirm_uc.execute(pv_id, actor_record)

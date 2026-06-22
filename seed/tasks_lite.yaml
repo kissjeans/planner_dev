@@ -86,7 +86,7 @@ tasks:
     is_splittable: true
     pair_mode: none
     optional_in_lite: false
-    depends_on: [8]
+    depends_on: [7]  # параллельно после 7 (Подробное описание идей)
     assignees:
       - { name: "Айгуль", strictness: "A", priority: 0 }
 
@@ -96,7 +96,7 @@ tasks:
     is_splittable: false
     pair_mode: none
     optional_in_lite: false
-    depends_on: [8]
+    depends_on: [7]  # параллельно после 7 (Подробное описание идей)
     assignees:
       - { name: "Айгуль", strictness: "A", priority: 0 }
 

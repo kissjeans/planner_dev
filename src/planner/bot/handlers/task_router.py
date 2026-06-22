@@ -484,7 +484,6 @@ async def _handle_text(
     # stashed in FSM after each proposal below.
     if (
         confirm_uc is not None
-        and actor_record is not None
         and edit_state is not None
         and _is_confirm_phrase(text)
     ):
