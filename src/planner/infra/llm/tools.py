@@ -96,27 +96,6 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         "input_schema": {"type": "object", "properties": {}},
     },
     {
-        "name": "what_if",
-        "description": (
-            "Смоделировать сценарий без записи в БД: shift_deadline (новый дедлайн), "
-            "add_person (+1 человек), switch_to_lite (lite-шаблон), drop_project. "
-            "Возвращает разницу с текущим планом."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "operation": {
-                    "type": "string",
-                    "enum": ["shift_deadline", "add_person", "switch_to_lite", "drop_project"],
-                },
-                "project_title": {"type": "string"},
-                "new_deadline": {"type": "string", "description": "YYYY-MM-DD для shift_deadline"},
-                "person_name": {"type": "string", "description": "Имя для add_person"},
-            },
-            "required": ["operation"],
-        },
-    },
-    {
         "name": "capture_task",
         "description": (
             "Записать задачу в БД (низкофрикционный путь). Можно указать "
@@ -321,25 +300,6 @@ class ToolBox:
             lines.append(f"• {pr.title} ({pr.status}, дедлайн {when})")
         return "\n".join(lines)
 
-    async def _what_if(self, args: dict[str, Any]) -> str:
-        from planner.bot.handlers.whatif import _base_request
-        from planner.bot.replies.plan_explainer import explain_diff
-        from planner.domain.intent import WhatIfIntent
-
-        intent = WhatIfIntent(
-            operation=args["operation"],
-            project_title=args.get("project_title"),
-            new_deadline=_opt_date(args.get("new_deadline")),
-            person_name=args.get("person_name"),
-        )
-        base_req = await _base_request(self._repo, self._solver)
-        if base_req is None or not base_req.tasks:
-            return "Нет зафиксированных планов для сценария — сначала создай и подтверди план."
-        from planner.app.what_if import WhatIfUseCase
-
-        diff = WhatIfUseCase(self._solver).execute(base_req, intent)
-        return f"Что-если ({intent.operation}):\n{explain_diff(diff, {}, {})}"
-
     # --- Write tools (admin-gated in execute) -----------------------------
 
     async def _capture_task(self, args: dict[str, Any]) -> str:
@@ -497,7 +457,6 @@ _EXECUTORS = {
     "find_assignees": ToolBox._find_assignees,
     "list_people": ToolBox._list_people,
     "list_projects": ToolBox._list_projects,
-    "what_if": ToolBox._what_if,
     "capture_task": ToolBox._capture_task,
     "plan_project": ToolBox._plan_project,
     "set_vacation": ToolBox._set_vacation,

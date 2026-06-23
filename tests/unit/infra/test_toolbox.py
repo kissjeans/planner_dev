@@ -27,7 +27,7 @@ from planner.infra.llm.tools import TOOL_SCHEMAS, ToolBox
 
 # --- Tool schema contract -------------------------------------------------
 
-_READ_TOOLS = {"get_team_load", "find_assignees", "list_people", "list_projects", "what_if"}
+_READ_TOOLS = {"get_team_load", "find_assignees", "list_people", "list_projects"}
 _WRITE_TOOLS = {
     "capture_task",
     "plan_project",
@@ -277,13 +277,12 @@ async def test_find_assignees_ranks_by_skill():
 
 
 @pytest.mark.asyncio
-async def test_what_if_returns_string_without_writing():
-    repo = FakeRepo(solver_people=[_Person("Андрей")])
-    out = await _box(repo, actor=_MEMBER).execute(
-        "what_if", {"operation": "add_person", "person_name": "Фрилансер"}
-    )
-    assert isinstance(out, str)
-    assert repo.saved_plans == []  # what-if never persists
+async def test_what_if_tool_removed_from_agent():
+    """what_if was dropped from the agent (broken diff rendering); levers are
+    suggested as text instead."""
+    assert "what_if" not in {t["name"] for t in TOOL_SCHEMAS}
+    out = await _box(FakeRepo(), actor=_MEMBER).execute("what_if", {"operation": "add_person"})
+    assert out == "Неизвестный инструмент what_if."
 
 
 # --- Admin gate -----------------------------------------------------------
