@@ -4,16 +4,116 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`planner_dev` — early-stage project. No build tooling, tests, or application code exists yet.
+`planner` (dir `planner_dev`) — a Telegram bot that auto-schedules a presales team's
+tasks across people and days (respecting capacity, dependencies, deadlines), with a
+FastAPI+htmx admin board for hard edits. Single-process, single-tenant, one Postgres
+writer. Full design lives in [docs/SPEC.md](docs/SPEC.md); deferred-to-v2 decisions in
+[docs/architecture.md](docs/architecture.md).
 
-## Getting Started
+Stack: Python 3.12 · uv · aiogram 3 · FastAPI · SQLAlchemy 2 async + asyncpg · Postgres 16 ·
+Redis 7 (FSM storage) · NetworkX (greedy solver) · Anthropic Claude (Sonnet agent / Haiku
+intent) · faster-whisper (voice STT) · APScheduler · matplotlib/seaborn (PNG renders).
 
-This repository currently contains only a README. When a tech stack is chosen and scaffolded, update this file with:
+## Commands
 
-- Build/lint/test commands
-- How to run a single test
-- Dev server startup command
-- Architecture overview
+```bash
+make dev          # run bot + web admin (:8000) + scheduler in ONE process
+make test         # uv run pytest tests -v
+make cov          # pytest with coverage (target 80%+)
+make lint         # ruff check src tests  +  mypy src/planner/domain --strict
+make migrate      # uv run alembic upgrade head
+make seed         # uv run python -m seed.load  (loads seed/*.yaml)
+
+uv sync --extra dev                              # install incl. test/lint deps
+uv run pytest tests/unit/domain/solver/test_greedy_c2.py            # one file
+uv run pytest tests/unit/app/test_add_project.py::test_name -v      # one test
+RUN_LLM_EVAL=1 uv run pytest -m live             # opt-in live-LLM eval tests
+```
+
+`mypy --strict` is enforced **only on `src/planner/domain`** (the pure core); the rest is
+linted by ruff but not strictly typed. ruff rules: `E,F,I,UP,B,SIM`, line-length 100.
+
+## Infra & local gotcha
+
+`docker compose up -d` starts Postgres + Redis. **Compose remaps host ports** to avoid
+clashing with any system Postgres/Redis: Postgres `5433→5432`, Redis `6380→6379`, app
+`8000`. When running the app on the host (`make dev`) against compose infra, `.env` must
+point at the remapped ports — `DATABASE_URL=...@localhost:5433/planner`,
+`REDIS_URL=redis://localhost:6380/0` — even though `.env.example` shows the in-container
+5432/6379. The Docker `app` service (and `docker-entrypoint.sh`, which runs `alembic
+upgrade head` then `python -m planner.main`) uses the in-network ports instead.
+
+Integration/e2e tests need Docker: they spin up a real Postgres via `testcontainers`
+(`tests/conftest.py`). Without Docker those tests skip; pure-unit tests still run.
+
+## Architecture
+
+Four layers, dependencies point **inward** — `domain` is pure (no IO) and knows nothing of
+the outer layers:
+
+```
+bot/ (aiogram)   web/ (FastAPI + htmx + Jinja2)
+        \              /
+         app/  (use-cases: AddProject, CaptureTask, ConfirmPlan, SetVacation, ...)
+            |
+        domain/  (solver, calendar rules, models, capability)  ← pure, no IO
+            |
+        infra/  (db, llm, stt, calendar, notion, scheduler)
+```
+
+External integrations sit behind **ports** (Protocols) so adapters are swappable and tests
+inject fakes:
+- `RepoPort` (`app/ports.py`) → `SqlAlchemyRepo` (`infra/db/repo.py`) — the single DB writer.
+- `IntentParserPort` → `ClaudeIntentParser` (Haiku) or `BasicIntentParser` (regex).
+- `SolverPort` → `GreedySolver` (NetworkX DAG, topo-sort + earliest-fit; OR-Tools deferred).
+- `TaskSinkPort` / `ProjectSinkPort` → Notion adapters (`infra/notion/`) or `Null*` no-ops.
+- `WorkingCalendar` → live `isdayoff.ru` snapshot, falling back to `SnapshotCalendar`.
+- `STTPort` → faster-whisper for Telegram voice notes.
+
+### Keyless degrade (important invariant)
+
+Every external dependency degrades instead of crashing when unconfigured/unreachable:
+no `ANTHROPIC_API_KEY` → regex `BasicIntentParser`; no Notion creds → `NullTaskSink`;
+isdayoff.ru down → offline `SnapshotCalendar`. The bot stays functional with zero API spend.
+`main.py` logs which mode each subsystem started in.
+
+### Agent vs. classifier
+
+When a key is set and `agent_enabled` is true, messages go through **`PlannerAgent`**
+(`infra/llm/agent.py`) — a Claude **Sonnet** tool-use loop (`MAX_ITERS=10`, temp 0) that
+reads/reasons over the DB and acts via thin tool wrappers in `infra/llm/tools.py`, each of
+which delegates to an existing `app/` use-case (no business logic is reimplemented in
+tools). On any Anthropic error it degrades to the regex parser. Plain classification
+(`ClaudeIntentParser`) can stay on Haiku; the orchestration loop needs Sonnet.
+
+### Plan lifecycle & write-gate
+
+Plans are versioned: `plan_project` only **proposes** a `PlanVersion` (`status=proposed`);
+committing is **manager-gated** — the agent has no confirm tool, the manager presses the
+inline ✅ button (or types «ок») which runs `ConfirmPlanUseCase`. Write tools
+(`capture_task`, `plan_project`, `set_vacation`, `replan`, `assign_task`) require
+`actor.is_admin` (admin set from `ADMIN_IDS`); reads are open to everyone. A Postgres
+advisory lock per `project_id` prevents double-booking from concurrent bot+web writes.
+
+### Single-process entrypoint
+
+`planner.main` builds the repo, bot dispatcher, solver (with calendar), FastAPI app, and
+APScheduler in one asyncio loop, then `asyncio.gather(dp.start_polling, server.serve)`.
+Scheduler jobs: daily team-load PNG to `TEAM_CHAT_ID`, and calendar-snapshot refresh.
+`ensure_secure_config` **refuses to start** when `DEBUG=false` and `JWT_SECRET` is still
+the insecure default (it would let an attacker forge admin sessions).
+
+## Tests
+
+`tests/` split by layer: `unit/` (domain solver/calendar/intent + use-cases, no IO),
+`integration/` (db + calendar/LLM via vcrpy on a real Postgres), `e2e/` (bot flows + web
+admin via mock updates), `eval/` (live-LLM quality, opt-in). Migrations live in
+`alembic/versions/`; seed data is YAML in `seed/`.
+
+## Branches
+
+`main` is the default/PR base. `pravky_dev` is the active dev branch; `deploy` tracks
+what's deployed. Remote: `github.com/kissjeans/planner_dev`.
 
 # CLAUDE.md
 
