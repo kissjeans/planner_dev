@@ -15,10 +15,12 @@ from planner.domain.models import PlanDiff, PlanResult
 NameMap = dict[UUID, str]
 
 # Soft-signal levers offered on both overloads and missed deadlines (spec §6/§7).
+# Phrased as plain advice: the bot reads natural language, so the manager just
+# writes which lever to apply (the /whatif command was removed).
 _LEVERS = (
-    "Рычаги: /whatif lite — сократить объём | "
-    "/whatif +человек — добавить исполнителя | "
-    "/whatif сдвинуть дедлайн — перенести срок"
+    "Рычаги: сократить объём (lite) | "
+    "добавить исполнителя | "
+    "перенести дедлайн — напишите, какой применить."
 )
 
 

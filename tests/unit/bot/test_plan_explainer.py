@@ -102,7 +102,6 @@ def test_backward_mode_missed_deadline_still_levers():
     out = explain_plan(plan, {t: "Бриф"}, {p: "Андрей"})  # no deadline
     assert "Рычаги" in out
     assert "lite" in out
-    assert "whatif" in out.lower() or "/whatif" in out
 
 
 def test_deadline_reachable_no_levers():
@@ -127,7 +126,6 @@ def test_overload_offers_levers():
     out = explain_plan(plan, {t: "Бриф"}, {p: "Андрей"})  # no deadline
     assert "Рычаги" in out
     assert "lite" in out
-    assert "/whatif" in out
 
 
 def test_explicit_deadline_suppresses_levers_even_with_overload():
