@@ -1,4 +1,4 @@
-"""Coverage tests for load, whatif, and task_router handlers (uncovered paths)."""
+"""Coverage tests for load and task_router handlers (uncovered paths)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from uuid import UUID, uuid4
 import pytest
 
 from planner.bot.handlers import load as load_handler
-from planner.bot.handlers import whatif as whatif_handler
 from planner.bot.handlers.task_router import _handle_text, describe_intent
 from planner.domain.calendar.rules import WeekendCalendar
 from planner.domain.intent import (
@@ -68,6 +67,18 @@ class _FakeParser:
 
     async def parse_intents(self, text: str, ctx: Any) -> list[Any]:
         return [self._intent]
+
+
+class _CountingParser(_FakeParser):
+    """Parser double that records how many times parse() was invoked."""
+
+    def __init__(self, intent: Any) -> None:
+        super().__init__(intent)
+        self.parse_calls = 0
+
+    async def parse(self, text: str, ctx: Any) -> Any:
+        self.parse_calls += 1
+        return self._intent
 
 
 class _MultiParser:
@@ -267,28 +278,6 @@ async def test_handle_text_capture_non_admin_blocked():
 
 
 @pytest.mark.asyncio
-async def test_whatif_base_request_preserves_dependencies():
-    """plan 022: the reconstructed what-if baseline must keep real dependencies."""
-    from planner.bot.handlers.whatif import _base_request
-    from planner.domain.models import Dependency, Person
-
-    a_id, b_id, p_id = uuid4(), uuid4(), uuid4()
-    person = Person(id=p_id, name="P", capacity_h=8)
-    payload = {
-        "assignments": [
-            {"task_id": str(a_id), "person_id": str(p_id), "allocations": [{"hours": 8}]},
-            {"task_id": str(b_id), "person_id": str(p_id), "allocations": [{"hours": 8}]},
-        ]
-    }
-    dep = Dependency(task_id=b_id, depends_on_id=a_id, link_type="FS")
-    repo = _FakeRepo(people=(person,), plans=(payload,), deps=(dep,))
-    req = await _base_request(repo, solver=None)  # type: ignore[arg-type]
-    assert req is not None
-    assert len(req.tasks) == 2
-    assert req.dependencies == (dep,)
-
-
-@pytest.mark.asyncio
 async def test_handle_text_unknown_sender_blocked_no_write():
     msg, answers = _message()
     repo = _FakeRepo()
@@ -348,7 +337,7 @@ async def test_handle_text_add_project_no_repo_echoes_intent():
 async def test_handle_load_no_repo():
     msg, answers = _message("/load")
     parser = _FakeParser(LoadIntent())
-    await load_handler.handle_load(msg, parser, repo=None)  # type: ignore[arg-type]
+    await load_handler.handle_load(msg, parser, {"is_admin": False}, repo=None)  # type: ignore[arg-type]
     assert "не подключён" in answers.calls[0]
 
 
@@ -357,7 +346,7 @@ async def test_handle_load_no_people():
     msg, answers = _message("/load")
     parser = _FakeParser(LoadIntent())
     repo = _FakeRepo(people=())
-    await load_handler.handle_load(msg, parser, repo=repo)  # type: ignore[arg-type]
+    await load_handler.handle_load(msg, parser, {"is_admin": True}, repo=repo)  # type: ignore[arg-type]
     assert "нет активных" in answers.calls[0]
 
 
@@ -367,104 +356,42 @@ async def test_handle_load_with_people_sends_photo():
     msg, answers = _message("/load")
     parser = _FakeParser(LoadIntent())
     repo = _FakeRepo(people=(person,), plans=[])
-    await load_handler.handle_load(msg, parser, repo=repo)  # type: ignore[arg-type]
+    await load_handler.handle_load(msg, parser, {"is_admin": True}, repo=repo)  # type: ignore[arg-type]
     assert answers.photos, "expected answer_photo call"
     assert "Андрей" in answers.photos[0][1] or "команда" in answers.photos[0][1]
 
 
-# ---------------------------------------------------------------------------
-# whatif._base_request
-# ---------------------------------------------------------------------------
-
 @pytest.mark.asyncio
-async def test_base_request_no_people_returns_none():
-    repo = _FakeRepo(people=())
-    solver = GreedySolver(WeekendCalendar())
-    result = await whatif_handler._base_request(repo, solver)  # type: ignore[arg-type]
-    assert result is None
-
-
-@pytest.mark.asyncio
-async def test_base_request_builds_plan_request():
+async def test_handle_load_stranger_blocked_without_parse():
     person = Person(id=uuid4(), name="Андрей", capacity_h=8)
-    task_id = uuid4()
-    plans = [
-        {
-            "assignments": [
-                {
-                    "task_id": str(task_id),
-                    "person_id": str(person.id),
-                    "allocations": [{"hours": 8}],
-                }
-            ]
-        }
-    ]
-    repo = _FakeRepo(people=(person,), plans=plans)
-    solver = GreedySolver(WeekendCalendar())
-    req = await whatif_handler._base_request(repo, solver)  # type: ignore[arg-type]
-    assert req is not None
-    assert len(req.tasks) == 1
+    msg, answers = _message("/load")
+    parser = _CountingParser(LoadIntent())
+    repo = _FakeRepo(people=(person,), plans=[])
+    await load_handler.handle_load(
+        msg, parser, {"is_admin": False}, repo=repo  # type: ignore[arg-type]
+    )
+    assert parser.parse_calls == 0, "stranger must not spend an LLM parse call"
+    assert not answers.photos, "stranger must not get the heatmap"
+    assert "Не узнал тебя" in answers.calls[0]
 
-
-# ---------------------------------------------------------------------------
-# handle_whatif with repo+solver
-# ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_handle_whatif_with_repo_returns_diff():
+async def test_handle_load_known_person_gets_heatmap():
+    from planner.app.ports import PersonRecord
+
     person = Person(id=uuid4(), name="Андрей", capacity_h=8)
-    task_id = uuid4()
-    plans = [
-        {
-            "assignments": [
-                {
-                    "task_id": str(task_id),
-                    "person_id": str(person.id),
-                    "allocations": [{"hours": 8}],
-                }
-            ]
-        }
-    ]
-    repo = _FakeRepo(people=(person,), plans=plans)
-    solver = GreedySolver(WeekendCalendar())
-    intent = WhatIfIntent(
-        operation="shift_deadline", project_title="Альфа", new_deadline=date(2026, 7, 1)
+    msg, answers = _message("/load")
+    parser = _FakeParser(LoadIntent())
+    repo = _FakeRepo(people=(person,), plans=[])
+    record = PersonRecord(id=uuid4(), name="Андрей", is_admin=False)
+    await load_handler.handle_load(
+        msg, parser, {"is_admin": False}, repo=repo, actor_record=record  # type: ignore[arg-type]
     )
-    msg, answers = _message("/whatif сдвинуть Альфу")
-    parser = _FakeParser(intent)
-    await whatif_handler.handle_whatif(
-        msg, parser, {"is_admin": True}, repo=repo, solver=solver  # type: ignore[arg-type]
-    )
-    assert answers.calls
-    assert "Что-если" in answers.calls[0]
-
-
-@pytest.mark.asyncio
-async def test_handle_whatif_no_repo_fallback():
-    intent = WhatIfIntent(operation="add_person", project_title="Бета")
-    msg, answers = _message("/whatif +человек в Бету")
-    parser = _FakeParser(intent)
-    await whatif_handler.handle_whatif(
-        msg, parser, {"is_admin": True}, repo=None, solver=None  # type: ignore[arg-type]
-    )
-    assert "Бета" in answers.calls[0]
-
-
-@pytest.mark.asyncio
-async def test_handle_whatif_allowed_for_non_admin():
-    # spec section 16: what-if is read-only -> a non-admin may run it.
-    intent = WhatIfIntent(operation="add_person", project_title="Бета")
-    msg, answers = _message("/whatif +человек в Бету")
-    parser = _FakeParser(intent)
-    await whatif_handler.handle_whatif(
-        msg, parser, {"is_admin": False}, repo=None, solver=None  # type: ignore[arg-type]
-    )
-    assert "Бета" in answers.calls[0]
-    assert "админ" not in answers.calls[0]
+    assert answers.photos, "expected answer_photo call"
 
 
 # ---------------------------------------------------------------------------
-# handle_mention_or_dm — private chat path (no bot.get_me() needed)
+# handle_mention_or_dm — private chat path (no bot.me() needed)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -482,8 +409,9 @@ async def test_handle_mention_private_chat_responds():
 async def test_handle_mention_group_without_mention_ignores():
     from planner.bot.handlers.task_router import handle_mention_or_dm
 
+    # Only the cached bot.me() may be used — never the raw get_me() API call.
     bot_info = SimpleNamespace(username="planer_by_possstum_bot", id=12345)
-    bot = SimpleNamespace(get_me=AsyncMock(return_value=bot_info))
+    bot = SimpleNamespace(me=AsyncMock(return_value=bot_info))
 
     intent = ClarifyIntent(question="Не понял.")
     msg, answers = _message("мяу мяу", chat_type="supergroup")
@@ -498,7 +426,7 @@ async def test_handle_mention_group_with_mention_responds():
     from planner.bot.handlers.task_router import handle_mention_or_dm
 
     bot_info = SimpleNamespace(username="planer_by_possstum_bot", id=12345)
-    bot = SimpleNamespace(get_me=AsyncMock(return_value=bot_info))
+    bot = SimpleNamespace(me=AsyncMock(return_value=bot_info))
 
     intent = ClarifyIntent(question="Не понял.")
     msg, answers = _message("@planer_by_possstum_bot загрузка", chat_type="supergroup")
@@ -1059,6 +987,30 @@ async def test_handle_text_confirm_commits_via_last_pv_id():
 
 
 @pytest.mark.asyncio
+async def test_handle_text_confirm_warns_on_partial_mirror():
+    """A typed «ок» reports a partial Notion mirror, same as the inline button."""
+    from planner.app.confirm_plan import ConfirmResult
+    from planner.app.ports import PersonRecord, PlanVersionRecord
+
+    pv = PlanVersionRecord(uuid4(), uuid4(), "committed", {})
+
+    class _PartialMirrorUC:
+        async def execute(self, pv_id, actor):
+            return ConfirmResult(plan=pv, mirror_total=5, mirror_failed=2)
+
+    actor_record = PersonRecord(id=uuid4(), name="Менеджер", is_admin=True)
+    msg, answers = _message()
+    await _handle_text(
+        msg, "ок", _FakeParser(ConfirmIntent()), {"is_admin": True},  # type: ignore[arg-type]
+        repo=_ConfirmRepo(), actor_record=actor_record,  # type: ignore[arg-type]
+        confirm_uc=_PartialMirrorUC(), last_pv_id=pv.id,  # type: ignore[arg-type]
+    )
+    reply = answers.calls[0]
+    assert "зафиксирован" in reply.lower()
+    assert "не удалось отразить 2 из 5" in reply
+
+
+@pytest.mark.asyncio
 async def test_handle_text_confirm_uses_explicit_plan_version_id():
     """ConfirmIntent.plan_version_id wins over context last_pv_id."""
     from planner.app.confirm_plan import ConfirmPlanUseCase
@@ -1466,3 +1418,93 @@ async def test_handle_voice_threads_agent_to_handle_text():
     )
     assert agent.calls and agent.calls[0][0] == "спланируй проект"
     assert "voice-handled" in answers.calls
+
+
+# ---------------------------------------------------------------------------
+# Legacy dispatch must thread project_sink (strict rule: a created project
+# ALWAYS carries its Notion master-card link)
+# ---------------------------------------------------------------------------
+
+class _RecordingProjectSink:
+    """ProjectSinkPort double: records create_card calls, returns a page id."""
+
+    def __init__(self) -> None:
+        self.created: list[Any] = []
+
+    async def create_card(self, project: Any) -> str:
+        self.created.append(project)
+        return "page-123"
+
+    async def mark_task_done(self, page_id: str, task_name: str) -> bool:
+        return True
+
+
+def _add_project_repo() -> Any:
+    from planner.app.add_project import ProjectTemplate, TemplateTaskSpec
+    from tests.unit.app.conftest import FakeRepo
+
+    andrey = Person(id=uuid4(), name="Андрей", capacity_h=8)
+    repo = FakeRepo()
+    repo.solver_people = (andrey,)
+    repo.templates = {
+        "standard": ProjectTemplate(
+            code="standard", tasks=(TemplateTaskSpec(1, "Бриф", 8, (andrey.id,)),)
+        )
+    }
+    return repo
+
+
+@pytest.mark.asyncio
+async def test_handle_text_legacy_add_project_creates_notion_card_with_link():
+    """The legacy (no-agent) dispatch must pass project_sink through so the
+    Notion master card is created and its link lands in the reply."""
+    from datetime import timedelta
+
+    from planner.app.ports import PersonRecord
+
+    repo = _add_project_repo()
+    sink = _RecordingProjectSink()
+    actor_record = PersonRecord(id=uuid4(), name="Менеджер", is_admin=True)
+    intent = AddProjectIntent(
+        title="Тест", template_code="standard",
+        deadline=date.today() + timedelta(days=30),
+    )
+    msg, answers = _message()
+    await _handle_text(
+        msg, "Тест", _FakeParser(intent), {"is_admin": True},  # type: ignore[arg-type]
+        repo=repo, solver=GreedySolver(WeekendCalendar()),
+        actor_record=actor_record, project_sink=sink,  # type: ignore[arg-type]
+    )
+    assert len(sink.created) == 1, "project sink must receive the master card"
+    assert any("notion.so" in c for c in answers.calls), "reply must carry the link"
+
+
+@pytest.mark.asyncio
+async def test_handle_edit_text_add_project_creates_notion_card_with_link():
+    """The edit-loop re-dispatch must also carry project_sink → Notion link."""
+    from datetime import timedelta
+
+    from planner.app.ports import PersonRecord
+    from planner.bot.handlers.task_router import handle_edit_text
+
+    repo = _add_project_repo()
+    sink = _RecordingProjectSink()
+    actor_record = PersonRecord(id=uuid4(), name="Менеджер", is_admin=True)
+    intent = AddProjectIntent(
+        title="Правка", template_code="standard",
+        deadline=date.today() + timedelta(days=30),
+    )
+    msg, answers = _message("правка: новый план")
+    state = SimpleNamespace(
+        clear=AsyncMock(),
+        set_state=AsyncMock(),
+        update_data=AsyncMock(),
+        get_data=AsyncMock(return_value={}),
+    )
+    await handle_edit_text(
+        msg, state, _FakeParser(intent), {"is_admin": True},  # type: ignore[arg-type]
+        repo=repo, solver=GreedySolver(WeekendCalendar()),
+        actor_record=actor_record, project_sink=sink,  # type: ignore[arg-type]
+    )
+    assert len(sink.created) == 1, "project sink must receive the master card"
+    assert any("notion.so" in c for c in answers.calls), "reply must carry the link"

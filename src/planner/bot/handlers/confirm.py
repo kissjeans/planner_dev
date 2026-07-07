@@ -17,6 +17,7 @@ from planner.app.confirm_plan import (
     PlanNotProposedError,
 )
 from planner.app.ports import PersonRecord
+from planner.bot.handlers.task_router import confirm_reply_text
 from planner.bot.states import PlanEditState
 
 router = Router(name="confirm")
@@ -53,9 +54,11 @@ async def handle_confirm(
         return  # actor_record may be None — any chat member can confirm
 
     try:
-        await confirm_uc.execute(pv_id, actor_record)
+        result = await confirm_uc.execute(pv_id, actor_record)
         await _retire_keyboard(cb)
-        await cb.answer("✅ План зафиксирован.")
+        failed = getattr(result, "mirror_failed", 0)
+        # A partial mirror needs the blocking alert; a clean commit only a toast.
+        await cb.answer(confirm_reply_text(result), show_alert=bool(failed))
     except (PlanNotFoundError, PlanNotProposedError):
         # Already committed (e.g. a second press) — retire the button and say so
         # plainly instead of an alarming error.

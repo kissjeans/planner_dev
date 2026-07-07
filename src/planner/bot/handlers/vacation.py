@@ -30,6 +30,16 @@ async def handle_vacation(
     repo: RepoPort | None = None,
     actor_record: PersonRecord | None = None,
 ) -> None:
+    # Known-sender gate (same as task_router._handle_text): only resolved team
+    # members or admins may act — and no LLM parse is spent on strangers.
+    # When repo is None we are in degraded/echo mode (no DB) — skip the gate.
+    if repo is not None and actor_record is None and not actor.get("is_admin", False):
+        await message.answer(
+            "Не узнал тебя — я отвечаю только участникам команды. "
+            "Попроси администратора добавить тебя."
+        )
+        return
+
     text = (message.text or "").partition(" ")[2].strip()
     if not text:
         await message.answer("Укажи имя и даты: /vacation <имя> <дата_от> <дата_до>.")

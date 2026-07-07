@@ -294,6 +294,19 @@ def describe_intent(intent: Intent) -> str:
     return intent.question or "Не понял команду."
 
 
+def confirm_reply_text(result: object) -> str:
+    """Reply for a successful confirm, warning when the Notion mirror was partial.
+
+    getattr: test doubles may return a bare record instead of ConfirmResult.
+    """
+    text = "✅ План зафиксирован."
+    failed = getattr(result, "mirror_failed", 0)
+    if failed:
+        total = getattr(result, "mirror_total", 0)
+        text += f"\n⚠️ Notion: не удалось отразить {failed} из {total} задач."
+    return text
+
+
 async def _confirm_latest(
     message: Message,
     intent: ConfirmIntent,
@@ -316,8 +329,8 @@ async def _confirm_latest(
         await message.answer("База данных не подключена.")
         return False
     try:
-        await confirm_uc.execute(target, actor_record)
-        await message.answer("План зафиксирован.")
+        result = await confirm_uc.execute(target, actor_record)
+        await message.answer(confirm_reply_text(result))
         return True
     except (PlanNotFoundError, PlanNotProposedError):
         await message.answer("План не найден или уже зафиксирован.")
@@ -491,8 +504,8 @@ async def _handle_text(
         pending = _parse_pv_id(data.get("pending_pv_id")) or last_pv_id
         if pending is not None:
             try:
-                await confirm_uc.execute(pending, actor_record)
-                await message.answer("✅ План зафиксирован.")
+                result = await confirm_uc.execute(pending, actor_record)
+                await message.answer(confirm_reply_text(result))
             except (PlanNotFoundError, PlanNotProposedError):
                 await message.answer("Этот план уже зафиксирован.")
             # End any edit loop and drop the stashed proposal so a later «ок»
@@ -568,7 +581,7 @@ async def _handle_text(
             message, intent, actor,
             repo=repo, solver=solver, actor_record=actor_record,
             explain_uc=explain_uc, confirm_uc=confirm_uc, last_pv_id=last_pv_id,
-            edit_state=edit_state, task_sink=task_sink,
+            edit_state=edit_state, task_sink=task_sink, project_sink=project_sink,
         )
         if pv_id is not None:
             last_pv = pv_id
@@ -584,7 +597,7 @@ async def _is_addressed_in_group(message: Message, text: str) -> bool:
     chat = getattr(message, "chat", None)
     if chat is None or getattr(chat, "type", "private") == "private" or message.bot is None:
         return True
-    bot_info = await message.bot.get_me()
+    bot_info = await message.bot.me()  # cached, no raw API call per message
     bot_mention = f"@{bot_info.username}".lower()
     is_reply_to_bot = (
         message.reply_to_message is not None

@@ -8,6 +8,7 @@ back to a text acknowledgement when the repo is not wired.
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -15,7 +16,7 @@ from aiogram.types import BufferedInputFile, Message
 
 from planner.app.add_project import deserialize_allocations
 from planner.app.load_summary import DEFAULT_DAYS, LoadSummaryUseCase
-from planner.app.ports import RepoPort
+from planner.app.ports import PersonRecord, RepoPort
 from planner.domain.models import DayAllocation
 from planner.infra.llm.ports import ChatContext, IntentParserPort
 
@@ -52,8 +53,22 @@ async def build_load_image(
 
 @router.message(Command("load"))
 async def handle_load(
-    message: Message, parser: IntentParserPort, repo: RepoPort | None = None
+    message: Message,
+    parser: IntentParserPort,
+    actor: dict[str, Any],
+    repo: RepoPort | None = None,
+    actor_record: PersonRecord | None = None,
 ) -> None:
+    # Known-sender gate (same as task_router._handle_text): only resolved team
+    # members or admins get the heatmap — and no LLM parse is spent on strangers.
+    # When repo is None we are in degraded/echo mode (no DB) — skip the gate.
+    if repo is not None and actor_record is None and not actor.get("is_admin", False):
+        await message.answer(
+            "Не узнал тебя — я отвечаю только участникам команды. "
+            "Попроси администратора добавить тебя."
+        )
+        return
+
     text = (message.text or "").partition(" ")[2].strip() or "load"
     intent = await parser.parse(text, ChatContext(today=date.today()))
     person_name = getattr(intent, "person_name", None)
