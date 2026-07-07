@@ -136,3 +136,66 @@ async def test_notion_sink_degrades_on_error(monkeypatch):
     sink = mod.NotionTaskSink("ntn_x", "db1")
     out = await sink.push_task(SinkTask(title="x", assignees=[], project=None, deadline=None))
     assert out is None
+
+def test_mapping_prefers_prefix_match_for_project():
+    """«Заказчик_new» (prefix match) must win over «Тэг спецпроект» (embedded)."""
+    from planner.infra.notion.mapping import build_properties
+
+    schema = {
+        "Name": {"type": "title"},
+        "Тэг спецпроект": {"type": "multi_select", "multi_select": {"options": []}},
+        "Заказчик_new": {"type": "multi_select", "multi_select": {"options": []}},
+    }
+    props = build_properties(
+        schema, SinkTask(title="t", assignees=[], project="МТС", deadline=None)
+    )
+    assert "Заказчик_new" in props
+    assert "Тэг спецпроект" not in props
+
+
+@pytest.mark.asyncio
+async def test_notion_sink_retries_with_safe_props_on_400(monkeypatch):
+    """A board that rejects new select options must still get the row:
+    on 4xx the sink retries once with title+date only."""
+    from datetime import date
+
+    from planner.infra.notion import client as mod
+
+    posts = []
+
+    class _Resp:
+        def __init__(self, data, code=200):
+            self._data = data
+            self.status_code = code
+            self.text = "Unsaved transactions: Expected to find other side of the relation"
+        def json(self):
+            return self._data
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise RuntimeError("http")
+
+    class _Client:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, url, **k):
+            return _Resp({"properties": {
+                "Name": {"type": "title"},
+                "Дата": {"type": "date"},
+                "Assign": {"type": "multi_select", "multi_select": {"options": []}},
+            }})
+        async def post(self, url, **k):
+            posts.append(k["json"])
+            if len(posts) == 1:
+                return _Resp({"message": "relation"}, code=400)
+            return _Resp({"id": "p1", "url": "https://notion.so/p1"})
+
+    monkeypatch.setattr(mod.httpx, "AsyncClient", _Client)
+    sink = mod.NotionTaskSink("ntn_x", "db1")
+    url = await sink.push_task(
+        SinkTask(title="бриф", assignees=["Никому Неизвестный"],
+                 project=None, deadline=date(2026, 7, 7))
+    )
+    assert url == "https://notion.so/p1"
+    assert len(posts) == 2, "no retry happened"
+    assert set(posts[1]["properties"]) == {"Name", "Дата"}, "retry must keep only safe props"

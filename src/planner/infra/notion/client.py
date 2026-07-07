@@ -52,6 +52,24 @@ class NotionTaskSink:
                     headers=self._headers(),
                     json={"parent": {"database_id": self._db}, "properties": props},
                 )
+                if r.status_code >= 400:
+                    # Some boards reject new select options (e.g. duplicated DBs:
+                    # «Expected to find other side of the relation»). A row with
+                    # just title+date beats no row at all — retry once with the
+                    # safe subset before giving up.
+                    log.warning(
+                        "notion_push_rejected",
+                        status=r.status_code, body=r.text[:300],
+                    )
+                    safe = {
+                        k: v for k, v in props.items() if "title" in v or "date" in v
+                    }
+                    if safe != props:
+                        r = await c.post(
+                            f"{_API}/pages",
+                            headers=self._headers(),
+                            json={"parent": {"database_id": self._db}, "properties": safe},
+                        )
                 r.raise_for_status()
                 url: str | None = r.json().get("url")
                 return url

@@ -21,11 +21,18 @@ _STATUS_RE = re.compile(r"статус|status", re.IGNORECASE)
 def _find(
     schema: dict[str, Any], pattern: re.Pattern[str], types: tuple[str, ...]
 ) -> str | None:
-    """First property whose Notion type is in ``types`` and whose name matches."""
-    for name, meta in schema.items():
-        if meta.get("type") in types and pattern.search(name):
-            return name
-    return None
+    """First property whose Notion type is in ``types`` and whose name matches.
+
+    A name that STARTS with the token («Заказчик_new») wins over an embedded
+    match («Тэг спецпроект» merely contains «проект»)."""
+    candidates = [
+        name for name, meta in schema.items()
+        if meta.get("type") in types and pattern.search(name)
+    ]
+    if not candidates:
+        return None
+    prefixed = [name for name in candidates if pattern.match(name)]
+    return (prefixed or candidates)[0]
 
 
 def _first_of_type(schema: dict[str, Any], type_: str) -> str | None:
