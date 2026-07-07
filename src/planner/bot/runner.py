@@ -118,8 +118,6 @@ def build_dispatcher(
     dp.include_router(clarify.router)
     dp.include_router(task_router.router)
     dp.include_router(load.router)
-    # /suggest and /whatif excluded from the bot (commands removed). Their helper
-    # functions stay importable (the agent's what_if tool reuses whatif helpers).
     dp.include_router(confirm.router)
     dp.include_router(vacation.router)
     dp.include_router(replan.router)
