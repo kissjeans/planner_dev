@@ -20,4 +20,4 @@ lint:       ## Ruff + mypy (domain is strict)
 	uv run mypy src/planner/domain --strict
 
 acceptance: ## Print the manual acceptance checklist
-	@echo "See docs/acceptance.md — run scenarios A-J in the test chat."
+	@echo "See docs/acceptance.md — run scenarios A-J in the test chat (C is out of MVP -> v2)."

@@ -89,11 +89,14 @@ tools). On any Anthropic error it degrades to the regex parser. Plain classifica
 ### Plan lifecycle & write-gate
 
 Plans are versioned: `plan_project` only **proposes** a `PlanVersion` (`status=proposed`);
-committing is **manager-gated** — the agent has no confirm tool, the manager presses the
-inline ✅ button (or types «ок») which runs `ConfirmPlanUseCase`. Write tools
-(`capture_task`, `plan_project`, `set_vacation`, `replan`, `assign_task`) require
-`actor.is_admin` (admin set from `ADMIN_IDS`); reads are open to everyone. A Postgres
-advisory lock per `project_id` prevents double-booking from concurrent bot+web writes.
+the agent has no confirm tool — a human presses the inline ✅ button (or types «ок») which
+runs `ConfirmPlanUseCase`; any chat participant may confirm (R8, commit 9ca5b61). Write
+tools (`capture_task`, `plan_project`, `set_vacation`, `replan`, `assign_task`,
+`mark_task_done`) require `actor.is_admin` (admin set from `ADMIN_IDS`); reads are open to
+everyone. The only concurrency guard is the compare-and-set status transition
+(`transition_plan_status`, `infra/db/repo.py:126-144`): a losing concurrent confirm matches
+zero rows and is rejected. A per-`project_id` Postgres advisory lock covering bot+web
+writes is a known follow-up — it does **not** exist yet.
 
 ### Single-process entrypoint
 

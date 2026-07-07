@@ -21,7 +21,7 @@ Defect IDs reference `docs/qa-report-2026-06-11.md`.
 | 4 | "I confirm or edit the proposed plan with a button" | MVP-04 |
 | 5 | "I can see team load at a glance" | MVP-05 |
 | 6 | "I add a vacation and the bot reshuffles tasks" | MVP-06 |
-| 7 | "I can simulate a change before committing it" | MVP-07 |
+| 7 | "I can simulate a change before committing it" | MVP-07 (исключено из MVP → v2) |
 | 8 | "The bot suggests who should take a task by skill" | MVP-08 |
 | 9 | "Only managers can change plans; everyone can read" | MVP-09 |
 | 10 | "There's an admin screen with plans, team, and an audit trail" | MVP-10 |
@@ -65,12 +65,16 @@ Defect IDs reference `docs/qa-report-2026-06-11.md`.
 ## MVP-07 — What-if simulation
 - **Steps:** `/whatif сдвинуть дедлайн Альфы на 30 июня`.
 - **Expected:** reports moved tasks + overload delta; **DB untouched** until confirm.
-- **Status ❓** — Needs live solver; "удали проект «X»" via `/task` misclassifies as create (**M4**) — verify what-if drop wording.
+- **Status — исключено из MVP, перенесено в v2.** Команда `/whatif` и агентный инструмент
+  `what_if` удалены (коммиты 404cd28, a86f0e1 — ломаный рендер диффа). Сценарий сохранён
+  здесь для аудита; в текущей сборке не проверяется.
 
 ## MVP-08 — Suggest assignee by skill
 - **Steps:** `/suggest Копирайтинг, Редактура`.
 - **Expected:** ranked people by skill coverage + current load; read-only (assigns no one).
-- **Status ❓** — Handler + use-case present; needs seeded roles/skills to verify ranking.
+- **Status ❓** — Команда `/suggest` удалена из меню (коммит 404cd28); подбор исполнителя
+  остался как инструмент агента — проверять свободным текстом («кому отдать задачу с
+  навыками Копирайтинг, Редактура?»). Needs seeded roles/skills to verify ranking.
 
 ## MVP-09 — Role gate (write = admin, read = open)
 - **Steps:** non-admin sends `/task создать проект Z`; same member sends `/load`.
@@ -105,7 +109,7 @@ Defect IDs reference `docs/qa-report-2026-06-11.md`.
 - **Blockers cleared:** C1, C2 (admin bypass) and H1 (throttle + allowlist) — without these the MVP is not safe to expose.
 
 **Should pass:**
-- MVP-03, 06, 07, 10, 13; fix M1, M2, M7.
+- MVP-03, 06, 10, 13; fix M1, M2, M7. (MVP-07 исключён из MVP → v2.)
 
 **Nice-to-have for MVP:**
 - MVP-08, 11, 12.

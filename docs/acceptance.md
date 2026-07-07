@@ -13,18 +13,23 @@ failing test, gets fixed, and is re-run.
 - [ ] **B. Backward mode** — `/task Новый проект "Бета", шаблон lite, дедлайн НЕ ЗАДАН` →
       bot returns earliest critical-path date, nothing written to DB.
 
-- [ ] **C. What-if** — on a committed project: `/whatif сдвинуть дедлайн Альфы на 30 июня` →
+- **C. What-if** — **исключено из MVP, перенесено в v2** (команда `/whatif` и
+      агентный инструмент `what_if` удалены — коммиты 404cd28, a86f0e1).
+      Было: on a committed project: `/whatif сдвинуть дедлайн Альфы на 30 июня` →
       bot reports moved tasks + overload delta.
-      _Verify:_ DB untouched unless the manager confirms.
 
 - [ ] **D. Overload + levers** — create 3 projects on one person → bot says deadline
-      unreachable, offers levers (lite / +person / shift) → apply lite → replan.
+      unreachable, offers levers (lite / +person / shift). Проверяется только
+      обнаружение перегруза и подсказка рычагов; шаг «apply lite → replan»
+      **исключён из MVP, перенесён в v2** (коммиты 404cd28, a86f0e1).
 
 - [ ] **E. Vacation** — `/vacation Айгуль 10-12 июня` → bot shifts her tasks, nothing drops.
       _Verify:_ `day_overrides` rows added, replan ran, deadline not missed.
 
-- [ ] **F. Voice input** — voice: «Прогони что-если, перенесём дедлайн Альфы на четверг» →
-      bot transcribes, interprets, returns the diff.
+- [ ] **F. Voice input** — voice message → bot transcribes, interprets, acts.
+      Проверять на команде, оставшейся в MVP, например: «Поставь Айгуль отпуск
+      с десятого по двенадцатое июня». Прежний вариант с what-if («Прогони
+      что-если…») **исключён из MVP, перенесён в v2** (коммиты 404cd28, a86f0e1).
 
 - [ ] **G. Chat-member rights (R8)** — any participant of the team chat sends
       `/task создать проект Z` → accepted and committable (no read-only tier);
@@ -57,7 +62,8 @@ Anchored on the real presales template (`seed/`) after `alembic upgrade head` +
 - [ ] **R5. Lite scope** — the lite template omits #5/#9/#11/#12 and drops the
       #16→#12 dependency; planning does not fail.
 - [ ] **R6. Notion master card** — creating a project produces a Notion card
-      (task checklist + empty «Бриф» + «Идеи»); marking a task done ticks its box.
+      (task checklist + empty «Бриф» + «Идеи»); marking a task done ticks its box
+      (wired: agent tool `mark_task_done` → `MarkTaskDoneUseCase` → Notion checkbox).
       Degrades to a no-op when Notion is not configured.
 - [ ] **R7. Daily summary** — 10:00 Europe/Moscow load + overloads posted to chat.
 - [ ] **R8. Chat-member commit** — any team-chat participant can commit a plan;
@@ -65,5 +71,6 @@ Anchored on the real presales template (`seed/`) after `alembic upgrade head` +
 
 ## Pass criterion
 
-All A–J and R1–R8 pass on the first run. Any failure is captured as a regression
-test before re-running.
+All A–J and R1–R8 pass on the first run — кроме позиций, помеченных
+«исключено из MVP, перенесено в v2» (C целиком, apply-lite-часть D,
+what-if-часть F). Any failure is captured as a regression test before re-running.
