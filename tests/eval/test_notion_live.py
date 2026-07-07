@@ -42,3 +42,18 @@ async def test_notion_live_push_creates_page():
         )
     )
     assert url is not None
+
+    # Clean up: archive the smoke page so live runs don't litter the board.
+    import httpx
+
+    page_id = url.rstrip("/").rsplit("-", 1)[-1]
+    async with httpx.AsyncClient(timeout=15.0) as c:
+        r = await c.patch(
+            f"https://api.notion.com/v1/pages/{page_id}",
+            headers={
+                "Authorization": f"Bearer {os.environ['NOTION_TOKEN']}",
+                "Notion-Version": "2022-06-28",
+            },
+            json={"archived": True},
+        )
+        assert r.status_code == 200, f"cleanup failed: {r.text[:200]}"

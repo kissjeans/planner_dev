@@ -183,6 +183,17 @@ async def test_full_flow_mirrors_to_live_notion(
         assert todos, f"task «{task_row[1]}» not found on the master card checklist"
         assert todos[0]["to_do"]["checked"] is True, "checkbox was not ticked"
     finally:
-        # Keep the live board tidy: archive the master card; mirrored task
-        # rows are left on purpose so the run can be inspected by hand.
+        # Keep the live board tidy: archive the master card AND the mirrored
+        # task rows (found by the run prefix) — live runs must not litter.
         await project_sink.archive_card(card_id)
+        headers = {"Authorization": f"Bearer {token}", "Notion-Version": _VERSION}
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            q = await client.post(
+                f"{_API}/databases/{db_id}/query", headers=headers,
+                json={"filter": {"property": "Name", "title": {"contains": _PREFIX}}},
+            )
+            for page in q.json().get("results", []):
+                await client.patch(
+                    f"{_API}/pages/{page['id']}", headers=headers,
+                    json={"archived": True},
+                )
