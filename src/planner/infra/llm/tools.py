@@ -6,8 +6,8 @@ here). ``ToolBox.execute`` dispatches by name and ALWAYS returns a short Russian
 string — including a clear error string the model can react to. It never raises.
 
 Guardrails (spec section 13/16/21):
-- Write tools (capture_task / plan_project / set_vacation / replan / assign_task)
-  require ``actor['is_admin']``; otherwise they return
+- Write tools (capture_task / plan_project / set_vacation / replan / assign_task /
+  mark_task_done) require ``actor['is_admin']``; otherwise they return
   «Только админ может менять план.» without touching the repo.
 - ``plan_project`` only PROPOSES a plan version. Committing is manager-gated and
   deterministic: the agent has NO confirm tool — the manager presses the inline
@@ -34,7 +34,7 @@ log = structlog.get_logger(__name__)
 
 _ADMIN_ONLY_MSG = "Только админ может менять план."
 _WRITE_TOOLS = frozenset(
-    {"capture_task", "plan_project", "set_vacation", "replan", "assign_task"}
+    {"capture_task", "plan_project", "set_vacation", "replan", "assign_task", "mark_task_done"}
 )
 _LOAD_DAYS = 14
 _MAX_LISTED = 12  # cap list output so the agent context stays small
@@ -167,6 +167,21 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                 "person": {"type": "string"},
             },
             "required": ["task_ref", "person"],
+        },
+    },
+    {
+        "name": "mark_task_done",
+        "description": (
+            "Отметить задачу выполненной, когда пишут «задача готова / сделана / "
+            "выполнена / закрыта». Ставит статус done — при replan задача больше "
+            "не переносится, а в чек-листе проекта в Notion ставится галочка."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "task_ref": {"type": "string", "description": "Название задачи"},
+            },
+            "required": ["task_ref"],
         },
     },
 ]
@@ -439,6 +454,27 @@ class ToolBox:
         actor_id = self._actor_record.id if self._actor_record else None
         return await build_assign_reply(intent, repo=self._repo, actor_id=actor_id)
 
+    async def _mark_task_done(self, args: dict[str, Any]) -> str:
+        from planner.app.mark_task_done import MarkTaskDoneUseCase
+        from planner.bot.handlers.task_router import _match_tasks
+
+        task_ref = str(args.get("task_ref") or "").strip()
+        candidates = _match_tasks(task_ref, await self._repo.list_tasks_with_meta())
+        if not candidates:
+            return f"Не нашёл задачу «{task_ref}» — уточни название."
+        if len(candidates) > 1:
+            names = ", ".join(sorted({t.task_name for t in candidates}))
+            return f"Нашёл несколько задач ({names}) — уточни, какую отметить."
+
+        task = candidates[0]
+        actor_id = self._actor_record.id if self._actor_record else None
+        # The write-gate already ran in execute(); the Notion tick (if configured)
+        # happens inside the use-case — keyless degrade, best-effort.
+        await MarkTaskDoneUseCase(self._repo, project_sink=self._project_sink).execute(
+            task.task_id, actor_id, is_admin=True
+        )
+        return f"Отметил «{task.task_name}» как выполненную."
+
     # --- Shared helpers ---------------------------------------------------
 
     async def _committed_hours(self) -> dict[UUID, int]:
@@ -462,6 +498,7 @@ _EXECUTORS = {
     "set_vacation": ToolBox._set_vacation,
     "replan": ToolBox._replan,
     "assign_task": ToolBox._assign_task,
+    "mark_task_done": ToolBox._mark_task_done,
     # confirm_plan intentionally NOT exposed: committing is manager-gated
     # (inline ✅ button / typed «ок»), never the agent (see module docstring).
 }

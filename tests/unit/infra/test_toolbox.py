@@ -34,6 +34,7 @@ _WRITE_TOOLS = {
     "set_vacation",
     "replan",
     "assign_task",
+    "mark_task_done",
 }
 
 
@@ -88,6 +89,7 @@ class FakeRepo:
         self._template = template
         self.audits: list[tuple] = []
         self.overrides: list[tuple] = []
+        self.task_statuses: dict[UUID, str] = {}
         self.reassigned: list[tuple] = []
         self.transitions: list[tuple] = []
         self.created_tasks: list[dict[str, Any]] = []
@@ -126,6 +128,9 @@ class FakeRepo:
 
     async def list_tasks_with_meta(self) -> list[TaskMeta]:
         return self._tasks_meta
+
+    async def set_task_status(self, task_id, status) -> None:
+        self.task_statuses[task_id] = status
 
     async def set_task_assignee(self, task_id, person_id, hours: int = 8) -> bool:
         self.reassigned.append(("set", task_id, person_id))
@@ -208,13 +213,14 @@ def _admin_record() -> PersonRecord:
 
 
 def _box(repo: FakeRepo, *, actor: dict, actor_record: PersonRecord | None = None,
-         solver: Any | None = None, sink: Any = None) -> ToolBox:
+         solver: Any | None = None, sink: Any = None, project_sink: Any = None) -> ToolBox:
     return ToolBox(
         repo=repo,
         solver=solver or FakeSolver(),
         actor=actor,
         actor_record=actor_record if actor_record is not None else _admin_record(),
         task_sink=sink,
+        project_sink=project_sink,
     )
 
 
@@ -294,6 +300,7 @@ async def test_what_if_tool_removed_from_agent():
     ("set_vacation", {"person": "Андрей", "day_from": "2026-07-01", "day_to": "2026-07-05"}),
     ("replan", {}),
     ("assign_task", {"task_ref": "дизайн", "person": "Андрей"}),
+    ("mark_task_done", {"task_ref": "дизайн"}),
 ])
 @pytest.mark.asyncio
 async def test_write_tools_blocked_for_non_admin(name, args):
@@ -304,6 +311,7 @@ async def test_write_tools_blocked_for_non_admin(name, args):
     assert repo.audits == []
     assert repo.created_tasks == []
     assert repo.overrides == []
+    assert repo.task_statuses == {}
 
 
 # --- Write tools (admin) --------------------------------------------------
@@ -436,6 +444,61 @@ async def test_plan_project_proposes_and_stashes_pv_id():
     assert isinstance(out, str)
     assert box.last_proposed_pv_id is not None
     assert any(kind == "version" for kind, *_ in repo.saved_plans)
+
+
+def _task_meta(tid: UUID, name: str, project_title: str = "Альфа") -> TaskMeta:
+    return TaskMeta(
+        task_id=tid, task_name=name, project_title=project_title,
+        priority="medium", status="not_done", start_date=None, end_date=None,
+        duration_hours=8, assignee_id=None, assignee_name=None, deadline=None,
+    )
+
+
+class _RecordingProjectSink:
+    def __init__(self) -> None:
+        self.ticked: list[tuple[str, str]] = []
+
+    async def mark_task_done(self, page_id: str, task_name: str) -> bool:
+        self.ticked.append((page_id, task_name))
+        return True
+
+
+@pytest.mark.asyncio
+async def test_mark_task_done_sets_status_and_ticks_notion():
+    tid = uuid4()
+    repo = FakeRepo(
+        tasks_meta=[_task_meta(tid, "дизайн")],
+        projects=[ProjectRecord(uuid4(), "Альфа", "active", notion_page_id="page-1")],
+    )
+    sink = _RecordingProjectSink()
+
+    out = await _box(repo, actor=_ADMIN, project_sink=sink).execute(
+        "mark_task_done", {"task_ref": "дизайн"}
+    )
+
+    assert "дизайн" in out
+    assert repo.task_statuses[tid] == "done"
+    assert sink.ticked == [("page-1", "дизайн")]
+
+
+@pytest.mark.asyncio
+async def test_mark_task_done_unknown_task_returns_clean_error():
+    repo = FakeRepo()
+    out = await _box(repo, actor=_ADMIN).execute("mark_task_done", {"task_ref": "нет такой"})
+    assert out == "Не нашёл задачу «нет такой» — уточни название."
+    assert repo.task_statuses == {}
+
+
+@pytest.mark.asyncio
+async def test_mark_task_done_ambiguous_asks_to_clarify():
+    repo = FakeRepo(
+        tasks_meta=[_task_meta(uuid4(), "дизайн"), _task_meta(uuid4(), "текст")],
+    )
+    out = await _box(repo, actor=_ADMIN).execute(
+        "mark_task_done", {"task_ref": "дизайн и текст"}
+    )
+    assert "уточни" in out
+    assert repo.task_statuses == {}
 
 
 @pytest.mark.asyncio
