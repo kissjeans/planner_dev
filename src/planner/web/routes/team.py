@@ -10,7 +10,13 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 
 from planner.app.errors import user_message
 from planner.app.ports import RepoPort
-from planner.app.set_vacation import PersonNotFoundError, SetVacationUseCase
+from planner.app.set_vacation import (
+    MAX_CAPACITY_H,
+    MIN_CAPACITY_H,
+    InvalidVacationError,
+    PersonNotFoundError,
+    SetVacationUseCase,
+)
 from planner.domain.intent import VacationIntent
 from planner.web.deps import actor_id_from, current_user, get_repo, require_admin
 
@@ -40,7 +46,7 @@ async def add_vacation(
     person_name: str = Form(...),
     day_from: str = Form(...),
     day_to: str = Form(...),
-    capacity_h: int = Form(0),
+    capacity_h: int = Form(0, ge=MIN_CAPACITY_H, le=MAX_CAPACITY_H),
     user: dict[str, Any] = Depends(require_admin),
     repo: RepoPort = Depends(get_repo),
 ) -> Response:
@@ -59,6 +65,8 @@ async def add_vacation(
             actor_id_from(user),
             is_admin=bool(user.get("is_admin", False)),
         )
+    except InvalidVacationError as exc:
+        return PlainTextResponse(str(exc), status_code=400)
     except PersonNotFoundError as exc:
         return PlainTextResponse(user_message(exc), status_code=404)
     return RedirectResponse("/team", status_code=status.HTTP_303_SEE_OTHER)

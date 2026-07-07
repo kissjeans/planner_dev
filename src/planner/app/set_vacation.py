@@ -12,9 +12,17 @@ from uuid import UUID
 from planner.app.ports import RepoPort
 from planner.domain.intent import VacationIntent
 
+MAX_VACATION_DAYS = 60
+MIN_CAPACITY_H = 0
+MAX_CAPACITY_H = 12
+
 
 class PersonNotFoundError(Exception):
     pass
+
+
+class InvalidVacationError(ValueError):
+    """Vacation input out of bounds (reversed/oversized range, bad capacity)."""
 
 
 class SetVacationUseCase:
@@ -26,6 +34,18 @@ class SetVacationUseCase:
     ) -> int:
         if not is_admin:
             raise PermissionError("Только админ может оформлять отпуск.")
+
+        if intent.day_from > intent.day_to:
+            raise InvalidVacationError("Дата начала отпуска позже даты окончания.")
+        range_days = (intent.day_to - intent.day_from).days + 1
+        if range_days > MAX_VACATION_DAYS:
+            raise InvalidVacationError(
+                f"Слишком длинный период: {range_days} дней, максимум {MAX_VACATION_DAYS}."
+            )
+        if not MIN_CAPACITY_H <= intent.capacity_h <= MAX_CAPACITY_H:
+            raise InvalidVacationError(
+                f"Ёмкость должна быть от {MIN_CAPACITY_H} до {MAX_CAPACITY_H} часов."
+            )
 
         person = await self._repo.get_person_by_name(intent.person_name)
         if person is None:

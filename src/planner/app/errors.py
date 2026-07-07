@@ -7,7 +7,7 @@ user. Keeps UI-facing copy in one place (DRY).
 from __future__ import annotations
 
 from planner.app.confirm_plan import PlanNotFoundError, PlanNotProposedError
-from planner.app.set_vacation import PersonNotFoundError
+from planner.app.set_vacation import InvalidVacationError, PersonNotFoundError
 
 _GENERIC = "Что-то пошло не так. Попробуй переформулировать запрос."
 
@@ -21,4 +21,6 @@ def user_message(exc: Exception) -> str:
         return "Этот план уже зафиксирован."
     if isinstance(exc, PersonNotFoundError):
         return "Не нашёл такого человека в команде."
+    if isinstance(exc, InvalidVacationError):
+        return str(exc)  # carries a specific Russian reason from validation
     return _GENERIC
