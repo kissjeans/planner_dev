@@ -225,3 +225,59 @@ async def test_api_error_falls_back_to_basic_parser():
     assert reply.text
     assert reply.proposed_pv_id is None
     tb.execute.assert_not_awaited()
+    # No writes happened → plain fallback, no interruption notice.
+    assert "прервана" not in reply.text.lower()
+    assert reply.captured_replies == ()
+
+
+@pytest.mark.asyncio
+async def test_error_after_plan_project_preserves_proposed_plan():
+    """A crash after plan_project keeps the pv id + honest RU interruption text."""
+    agent = _make_agent()
+    pv = uuid4()
+    tb = _toolbox()
+
+    async def _propose(name: str, args: dict) -> str:
+        tb.last_proposed_pv_id = pv
+        return "План предложен."
+
+    tb.execute = AsyncMock(side_effect=_propose)
+    agent._client.messages.create = AsyncMock(
+        side_effect=[
+            _tool_use_resp("plan_project", {"title": "Бета", "template": "standard"}),
+            RuntimeError("API down"),
+        ]
+    )
+
+    reply = await agent.run("распланируй Бету", _ctx(), tb)
+
+    assert reply.proposed_pv_id == pv  # confirm buttons still appear
+    assert "прервана" in reply.text.lower()
+    assert "повторите остальное отдельным сообщением" in reply.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_error_after_capture_preserves_confirmations_and_links():
+    """A crash after capture_task keeps confirmations + Notion links + notice."""
+    agent = _make_agent()
+    tb = _toolbox()
+
+    async def _capture(name: str, args: dict) -> str:
+        tb.captured_replies = ["✓ Записал: КП по МТС"]
+        tb.captured_notion_urls = ["https://notion.so/abc"]
+        return "✓ Записал"
+
+    tb.execute = AsyncMock(side_effect=_capture)
+    agent._client.messages.create = AsyncMock(
+        side_effect=[
+            _tool_use_resp("capture_task", {"title": "КП", "project": "МТС"}),
+            RuntimeError("API down"),
+        ]
+    )
+
+    reply = await agent.run("поставь задачу КП по МТС", _ctx(), tb)
+
+    # The bot renders captured_replies verbatim, so evidence + notice ride there.
+    assert reply.captured_replies[0] == "✓ Записал: КП по МТС"
+    assert any("прервана" in r.lower() for r in reply.captured_replies)
+    assert reply.notion_urls == ("https://notion.so/abc",)

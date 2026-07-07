@@ -6,7 +6,7 @@ existing use-cases in :mod:`planner.infra.llm.tools`). The deterministic solver
 stays the math — the agent only orchestrates and explains.
 
 Loop contract (spec architecture pseudocode):
-- ``MAX_ITERS=6`` tool rounds, ``temperature=0``, ``max_tokens=1024``.
+- ``MAX_ITERS=10`` tool rounds, ``temperature=0``, ``max_tokens=1024``.
 - First user message = a context block (today / roster / projects / recent chat)
   + a ``---`` separator + the raw message.
 - Each ``tool_use`` block is dispatched through :meth:`ToolBox.execute` (which
@@ -14,7 +14,10 @@ Loop contract (spec architecture pseudocode):
 - ``proposed_pv_id`` is taken from ``toolbox.last_proposed_pv_id`` after the loop
   so the bot can attach the ✅/✏️ confirm buttons.
 - On ANY anthropic exception → degrade to the regex :class:`BasicIntentParser`
-  (describe text) so the bot still answers (spec section 15).
+  (describe text) so the bot still answers (spec section 15) — UNLESS write tools
+  already ran this turn: then the reply preserves their evidence (proposed plan
+  id, capture confirmations, Notion links) plus an honest interruption notice,
+  so confirm buttons still appear and nothing is silently lost or re-executed.
 """
 
 from __future__ import annotations
@@ -46,6 +49,11 @@ _MAX_ITERS = 10
 _MAX_TOKENS = 1024
 _TEMPERATURE = 0
 _CAP_MESSAGE = "Не успел обработать — переформулируй короче."
+_INTERRUPT_NOTICE = (
+    "⚠️ Дальнейшая обработка прервана из-за ошибки — "
+    "повторите остальное отдельным сообщением."
+)
+_PLAN_PROPOSED_LINE = "Предложил план — подтверди кнопкой ниже."
 
 
 @dataclass(frozen=True)
@@ -89,6 +97,29 @@ def _final_text(resp: Any) -> str:
     return text.strip() or _CAP_MESSAGE
 
 
+def _partial_reply(toolbox: ToolBox) -> AgentReply | None:
+    """Evidence-preserving reply when a mid-loop failure follows tool writes.
+
+    Returns ``None`` when no side effect happened (plain fallback applies). The
+    interruption notice rides in ``captured_replies`` too, because the bot shows
+    those verbatim instead of ``text`` whenever any capture happened.
+    """
+    plan_proposed = toolbox.last_proposed_pv_id is not None
+    if not (plan_proposed or toolbox.captured_replies or toolbox.captured_notion_urls):
+        return None
+    lines: list[str] = []
+    if plan_proposed:
+        lines.append(_PLAN_PROPOSED_LINE)
+    lines.append(_INTERRUPT_NOTICE)
+    replies = (*toolbox.captured_replies, *lines)
+    return AgentReply(
+        text="\n\n".join(replies),
+        proposed_pv_id=toolbox.last_proposed_pv_id,
+        notion_urls=tuple(toolbox.captured_notion_urls),
+        captured_replies=replies,
+    )
+
+
 class PlannerAgent:
     """Runs the Anthropic tool-use loop with a regex fallback safety net."""
 
@@ -107,6 +138,11 @@ class PlannerAgent:
             return await self._loop(messages, toolbox)
         except Exception as exc:  # noqa: BLE001 — degrade, never crash the bot
             log.warning("agent_failed", error=str(exc))
+            partial = _partial_reply(toolbox)
+            if partial is not None:
+                # Writes already happened — keep their evidence (confirm buttons,
+                # confirmations, links) instead of a fallback that discards it.
+                return partial
             return AgentReply(text=self._fallback_text(text, ctx))
 
     async def _loop(self, messages: list[dict[str, Any]], toolbox: ToolBox) -> AgentReply:
