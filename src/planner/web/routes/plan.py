@@ -83,12 +83,11 @@ async def edit_task(
     user: dict[str, Any] = Depends(require_admin),
     repo: RepoPort = Depends(get_repo),
 ) -> RedirectResponse:
-    await repo.update_task_schedule(
-        task_id,
-        date.fromisoformat(start) if start else None,
-        date.fromisoformat(end) if end else None,
-        None,
-    )
+    start_d = date.fromisoformat(start) if start else None
+    end_d = date.fromisoformat(end) if end else None
+    await repo.update_task_schedule(task_id, start_d, end_d, None)
+    # Keep the committed PlanVersion payload (gantt source) in sync too.
+    await repo.update_schedule_in_plan(task_id, start_d, end_d)
     await repo.add_audit(
         actor_id_from(user), "edit_task", "task", task_id, {"start": start, "end": end}
     )

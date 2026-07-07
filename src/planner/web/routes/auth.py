@@ -17,9 +17,14 @@ router = APIRouter()
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 
 
-def _set_session_cookie(resp: RedirectResponse, token: str) -> None:
+def _set_session_cookie(resp: RedirectResponse, token: str, *, secure: bool) -> None:
     resp.set_cookie(
-        COOKIE_NAME, token, httponly=True, samesite="lax", max_age=JWT_TTL_HOURS * 3600
+        COOKIE_NAME,
+        token,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        max_age=JWT_TTL_HOURS * 3600,
     )
 
 
@@ -44,7 +49,7 @@ async def dev_login(request: Request) -> RedirectResponse:
     claims = {"sub": "dev", "name": "Dev Admin", "tg_id": 0, "is_admin": True}
     token = create_jwt(claims, request.app.state.jwt_secret)
     resp = RedirectResponse("/plan", status_code=status.HTTP_303_SEE_OTHER)
-    _set_session_cookie(resp, token)
+    _set_session_cookie(resp, token, secure=not request.app.state.debug)
     return resp
 
 
@@ -70,7 +75,7 @@ async def login_callback(request: Request) -> RedirectResponse:
     token = create_jwt(claims, request.app.state.jwt_secret)
 
     resp = RedirectResponse("/plan", status_code=status.HTTP_303_SEE_OTHER)
-    _set_session_cookie(resp, token)
+    _set_session_cookie(resp, token, secure=not request.app.state.debug)
     return resp
 
 

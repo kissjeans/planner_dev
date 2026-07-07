@@ -461,6 +461,31 @@ class SqlAlchemyRepo:
                     return True
             return False
 
+    async def update_schedule_in_plan(
+        self, task_id: UUID, start: date | None, end: date | None
+    ) -> bool:
+        task_key = str(task_id)
+        async with self._sf() as s, s.begin():
+            plans = await s.scalars(
+                select(PlanVersion).where(PlanVersion.status == "committed")
+            )
+            for pv in plans:
+                payload = dict(pv.payload)
+                assignments = [dict(a) for a in payload.get("assignments", [])]
+                moved = False
+                for a in assignments:
+                    if a.get("task_id") == task_key:
+                        if start is not None:
+                            a["start_date"] = start.isoformat()
+                        if end is not None:
+                            a["end_date"] = end.isoformat()
+                        moved = True
+                if moved:
+                    payload["assignments"] = assignments
+                    pv.payload = payload
+                    return True
+            return False
+
     async def list_project_tasks(self, project_id: UUID) -> list[TaskRecord]:
         async with self._sf() as s:
             rows = await s.scalars(

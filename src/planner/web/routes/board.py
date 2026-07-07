@@ -75,8 +75,14 @@ async def reassign(
         tid, pid = UUID(task_id), UUID(person_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="bad id") from exc
+    people = await repo.list_people()
+    if all(p.id != pid for p in people):
+        raise HTTPException(status_code=404, detail="Не нашёл такого человека.")
     moved = await repo.set_task_assignee(tid, pid)
     if moved:
+        # Keep the committed PlanVersion payload (gantt source) in sync — the
+        # same pair the bot uses (bot/handlers/task_router.py).
+        await repo.reassign_in_plan(tid, pid)
         await repo.add_audit(
             actor_id_from(user), "reassign_task", "task", tid, {"person_id": person_id}
         )

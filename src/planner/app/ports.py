@@ -224,6 +224,12 @@ class RepoPort(Protocol):
         """Move a task to another person inside its committed plan. True if moved."""
         ...
 
+    async def update_schedule_in_plan(
+        self, task_id: UUID, start: date | None, end: date | None
+    ) -> bool:
+        """Move a task's dates inside its committed plan. True if moved."""
+        ...
+
     async def upsert_day_override(
         self, person_id: UUID, day: date, capacity_h: int, reason: str | None
     ) -> None: ...

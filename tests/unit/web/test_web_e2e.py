@@ -34,6 +34,8 @@ class WebFakeRepo:
         self.audits: list = []
         self.task_updates: list = []
         self.reassigns: list = []
+        self.plan_reassigns: list = []
+        self.plan_date_updates: list = []
         self.people = {"Айгуль": PersonRecord(
             id=uuid4(), name="Айгуль", role_label="Аналитик")}
 
@@ -53,6 +55,14 @@ class WebFakeRepo:
 
     async def set_task_assignee(self, task_id, person_id, hours=8):
         self.reassigns.append((task_id, person_id))
+        return True
+
+    async def reassign_in_plan(self, task_id, new_person_id):
+        self.plan_reassigns.append((task_id, new_person_id))
+        return True
+
+    async def update_schedule_in_plan(self, task_id, start, end):
+        self.plan_date_updates.append((task_id, start, end))
         return True
 
     async def get_task_name_map(self):
@@ -461,6 +471,55 @@ def test_vacation_bad_date_returns_400(client):
     assert r.status_code == 400
 
 
+def test_vacation_reversed_range_returns_400_and_writes_nothing(client):
+    _auth(client, is_admin=True)
+    r = client.post(
+        "/team/vacation",
+        data={"person_name": "Айгуль", "day_from": "2026-06-12",
+              "day_to": "2026-06-10", "capacity_h": "0"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 400
+    assert client.repo.overrides == []  # type: ignore[attr-defined]
+    assert client.repo.audits == []  # type: ignore[attr-defined]
+
+
+def test_vacation_range_over_60_days_returns_400(client):
+    _auth(client, is_admin=True)
+    r = client.post(
+        "/team/vacation",
+        data={"person_name": "Айгуль", "day_from": "2026-06-01",
+              "day_to": "2026-08-01", "capacity_h": "0"},  # 62 days
+        follow_redirects=False,
+    )
+    assert r.status_code == 400
+    assert client.repo.overrides == []  # type: ignore[attr-defined]
+
+
+def test_vacation_capacity_13_returns_422(client):
+    _auth(client, is_admin=True)
+    r = client.post(
+        "/team/vacation",
+        data={"person_name": "Айгуль", "day_from": "2026-06-10",
+              "day_to": "2026-06-11", "capacity_h": "13"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 422
+    assert client.repo.overrides == []  # type: ignore[attr-defined]
+
+
+def test_vacation_negative_capacity_returns_422(client):
+    _auth(client, is_admin=True)
+    r = client.post(
+        "/team/vacation",
+        data={"person_name": "Айгуль", "day_from": "2026-06-10",
+              "day_to": "2026-06-11", "capacity_h": "-1"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 422
+    assert client.repo.overrides == []  # type: ignore[attr-defined]
+
+
 def test_reassign_non_uuid_returns_400(client):
     _auth(client, is_admin=True)
     r = client.post(
@@ -475,6 +534,72 @@ def test_audit_negative_offset_returns_422(client):
     _auth(client)
     assert client.get("/audit?offset=-1").status_code == 422
     assert client.get("/audit?limit=-1").status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Web fixes: Secure cookie, committed-plan consistency, unknown-person 404
+# ---------------------------------------------------------------------------
+
+def test_login_cookie_secure_when_debug_off(client):
+    """_settings() has debug=False → session cookie must carry the Secure flag."""
+    data = {"id": "42", "first_name": "Boss", "auth_date": str(int(time.time()))}
+    check = "\n".join(f"{k}={data[k]}" for k in sorted(data))
+    secret = hashlib.sha256(BOT.encode()).digest()
+    data["hash"] = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
+
+    r = client.get("/login/telegram", params=data, follow_redirects=False)
+    assert r.status_code == 303
+    assert "secure" in r.headers["set-cookie"].lower()
+
+
+def test_login_cookie_not_secure_in_debug():
+    """debug=True (local http dev-login) → no Secure flag, cookie must work."""
+    settings = _settings().model_copy(update={"debug": True})
+    app = create_app(WebFakeRepo(), settings)
+    c = TestClient(app, client=("127.0.0.1", 5000))
+    r = c.get("/dev-login", follow_redirects=False)
+    assert r.status_code == 303
+    assert "secure" not in r.headers["set-cookie"].lower()
+
+
+def test_reassign_updates_committed_plan_too(client):
+    """Web reassign must mirror the bot: set_task_assignee + reassign_in_plan."""
+    _auth(client, is_admin=True)
+    pid = client.repo.people["Айгуль"].id  # type: ignore[attr-defined]
+    r = client.post(
+        "/schedule/reassign",
+        data={"task_id": str(_TASK_ID), "person_id": str(pid)},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert client.repo.plan_reassigns == [(_TASK_ID, pid)]  # type: ignore[attr-defined]
+
+
+def test_reassign_unknown_person_returns_404(client):
+    """A well-formed but non-existent person UUID is a 404, not a FK 500."""
+    _auth(client, is_admin=True)
+    r = client.post(
+        "/schedule/reassign",
+        data={"task_id": str(_TASK_ID), "person_id": str(uuid4())},
+        follow_redirects=False,
+    )
+    assert r.status_code == 404
+    assert "Не нашёл такого человека" in r.text
+    assert client.repo.reassigns == []  # type: ignore[attr-defined]
+
+
+def test_edit_task_updates_committed_plan_dates(client):
+    """Date edits must reach the committed payload (gantt source), not just tasks."""
+    _auth(client, is_admin=True)
+    r = client.post(
+        f"/plan/{_PROJECT_ID}/task/{_TASK_ID}/edit",
+        data={"start": "2026-06-10", "end": "2026-06-12"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert client.repo.plan_date_updates == [  # type: ignore[attr-defined]
+        (_TASK_ID, date(2026, 6, 10), date(2026, 6, 12))
+    ]
 
 
 def test_reassign_records_actor_id(client):

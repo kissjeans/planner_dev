@@ -250,6 +250,35 @@ async def test_committed_plans_with_project_and_reassign(repo, project, db_sessi
 
 
 @pytest.mark.asyncio
+async def test_update_schedule_in_plan(repo, project, db_session_factory):
+    tid = uuid4()
+    pv_id = uuid4()
+    payload = {"assignments": [
+        {"task_id": str(tid), "person_id": str(uuid4()),
+         "start_date": "2026-06-08", "end_date": "2026-06-09",
+         "allocations": [{"day": "2026-06-08", "hours": 8}]}
+    ], "risks": [], "end_date": None}
+    async with db_session_factory() as s, s.begin():
+        s.add(PlanVersion(id=pv_id, project_id=project, status="committed",
+                          payload=payload))
+
+    moved = await repo.update_schedule_in_plan(
+        tid, date(2026, 6, 10), date(2026, 6, 12)
+    )
+    assert moved is True
+    # unknown task → False
+    assert await repo.update_schedule_in_plan(uuid4(), date(2026, 6, 10), None) is False
+
+    async with db_session_factory() as s:
+        pv = await s.get(PlanVersion, pv_id)
+        a = pv.payload["assignments"][0]
+    assert a["start_date"] == "2026-06-10"
+    assert a["end_date"] == "2026-06-12"
+    async with db_session_factory() as s, s.begin():
+        await s.execute(text("DELETE FROM plan_versions WHERE id = :id"), {"id": pv_id})
+
+
+@pytest.mark.asyncio
 async def test_get_project_by_title_case_insensitive(repo, project):
     rec = await repo.get_project_by_title("интег проект")  # lower-case query
     assert rec is not None
