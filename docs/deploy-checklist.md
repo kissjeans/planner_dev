@@ -11,6 +11,11 @@ Run through this before promoting `planner_dev` to a production environment.
       The app refuses to start with `DEBUG=false` while this is unset.
 - [ ] `BOT_TOKEN` and `ANTHROPIC_API_KEY` supplied via env / secret manager —
       never committed to the repo.
+- [ ] Если Docker-образ уже собирался из каталога с реальным `.env` (до появления
+      `.dockerignore`) — ротировать `BOT_TOKEN`, `ANTHROPIC_API_KEY`, `JWT_SECRET`:
+      секреты могли попасть в слои образа.
+- [ ] Пароль Postgres в продакшене задан через `POSTGRES_PASSWORD` (по умолчанию
+      compose подставляет dev-значение `planner`).
 - [ ] `TEAM_CHAT_ID` set to the real team chat. Membership in this chat grants
       full write rights (commit/replan); there is no read-only tier (C5/R8).
 - [ ] Notion (optional): `NOTION_TOKEN`, `NOTION_DATABASE_ID` (per-task sync),
@@ -33,9 +38,10 @@ Run through this before promoting `planner_dev` to a production environment.
 
 ## Network exposure
 
-- [ ] Admin web (`:8000`) is **not** publicly exposed — bind to loopback or
-      reach it only over VPN / SSH tunnel. The bot long-polls outbound, so no
-      inbound port is needed for it.
+- [ ] `docker-compose.yml` binds all published ports (`8000`, `5433`, `6380`) to
+      `127.0.0.1` by default — verify no override re-exposes them on `0.0.0.0`.
+      Admin web (`:8000`) is reached only over VPN / SSH tunnel. The bot
+      long-polls outbound, so no inbound port is needed for it.
 
 ## Runtime
 

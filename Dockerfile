@@ -9,6 +9,6 @@ WORKDIR /app
 
 COPY . .
 
-RUN pip install uv && uv sync --extra dev
+RUN pip install uv && uv sync
 
 ENTRYPOINT ["./docker-entrypoint.sh"]

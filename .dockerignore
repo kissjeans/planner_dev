@@ -1,0 +1,23 @@
+# Secrets — never bake into the image (compose injects .env via env_file).
+.env
+.env.*
+
+# VCS
+.git
+.gitignore
+
+# Not needed at runtime (seed/ IS needed: `python -m seed.load_seed` runs in-container).
+tests/
+docs/
+seed/*.local*
+MANUAL.md
+*.pdf
+
+# Local env & caches
+.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.DS_Store
