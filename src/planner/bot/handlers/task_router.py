@@ -824,6 +824,12 @@ async def handle_mention_or_dm(
     # Strip leading @botname if present so parser gets clean text.
     text = raw.partition(" ")[2].strip() if raw.lower().startswith("@") else raw.strip()
     if not text:
+        # A bare @mention arms the voice window above but must not be silent —
+        # without a reply the user thinks the bot is down.
+        await message.answer(
+            "Слушаю! Напиши запрос в одном сообщении со мной — "
+            "или просто пришли голосовое."
+        )
         return
     await _handle_text(
         message, text, parser, actor,

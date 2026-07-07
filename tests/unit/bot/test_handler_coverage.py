@@ -436,6 +436,28 @@ async def test_handle_mention_group_with_mention_responds():
     assert answers.calls
 
 
+@pytest.mark.asyncio
+async def test_handle_mention_group_bare_mention_replies_hint():
+    """A bare @mention (no text) must not be silent: it arms the voice window
+    and tells the user what the bot expects (live UX gap, work chat 2026-07-07)."""
+    from planner.bot.handlers.task_router import handle_mention_or_dm
+    from planner.infra.voice_arm import VoiceArm
+
+    bot_info = SimpleNamespace(username="planer_by_possstum_bot", id=12345)
+    bot = SimpleNamespace(me=AsyncMock(return_value=bot_info))
+
+    parser = _FakeParser(ClarifyIntent(question="Не понял."))
+    msg, answers = _message("@planer_by_possstum_bot", chat_type="supergroup")
+    msg.bot = bot
+    arm = VoiceArm()
+    await handle_mention_or_dm(
+        msg, parser, {"is_admin": False}, voice_arm=arm  # type: ignore[arg-type]
+    )
+    assert answers.calls, "bare mention was silently ignored"
+    assert "голосовое" in answers.calls[0].lower()
+    assert arm.is_armed(msg.chat.id, msg.from_user.id), "voice window not armed"
+
+
 # ---------------------------------------------------------------------------
 # _plan_keyboard + full AddProject via _handle_text with repo+solver
 # ---------------------------------------------------------------------------
