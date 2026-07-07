@@ -5,6 +5,7 @@ from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     Date,
     DateTime,
@@ -27,7 +28,8 @@ class Person(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    tg_user_id: Mapped[int | None] = mapped_column(unique=True, nullable=True)
+    # BigInteger: modern Telegram user ids exceed int32 (e.g. 6_137_672_320).
+    tg_user_id: Mapped[int | None] = mapped_column(BigInteger, unique=True, nullable=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     role_label: Mapped[str | None] = mapped_column(Text, nullable=True)
     capacity_h: Mapped[int] = mapped_column(nullable=False, default=8)

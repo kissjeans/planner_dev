@@ -122,6 +122,27 @@ async def test_get_person_by_tg_id_missing(repo):
     assert rec is None
 
 
+@pytest.mark.asyncio
+async def test_get_person_by_tg_id_int64(repo, db_session_factory):
+    """Modern Telegram ids exceed int32 (e.g. 6137672320) — column must be BIGINT.
+
+    Regression: prod crashed on every message from a new-generation account
+    («value out of int32 range», 2026-07-07).
+    """
+    pid = uuid4()
+    big_tg_id = 6137672320
+    async with db_session_factory() as s, s.begin():
+        s.add(Person(id=pid, name="Новый Аккаунт", is_admin=False,
+                     is_active=True, capacity_h=8, tg_user_id=big_tg_id))
+    try:
+        rec = await repo.get_person_by_tg_id(big_tg_id)
+        assert rec is not None
+        assert rec.name == "Новый Аккаунт"
+    finally:
+        async with db_session_factory() as s, s.begin():
+            await s.execute(text("DELETE FROM people WHERE id = :id"), {"id": pid})
+
+
 # ---------------------------------------------------------------------------
 # get_plan_version (None path) + set_plan_version_status
 # ---------------------------------------------------------------------------
