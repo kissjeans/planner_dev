@@ -449,6 +449,7 @@ async def test_handle_mention_group_bare_mention_replies_hint():
     parser = _FakeParser(ClarifyIntent(question="Не понял."))
     msg, answers = _message("@planer_by_possstum_bot", chat_type="supergroup")
     msg.bot = bot
+    msg.from_user = SimpleNamespace(id=777)
     arm = VoiceArm()
     await handle_mention_or_dm(
         msg, parser, {"is_admin": False}, voice_arm=arm  # type: ignore[arg-type]
@@ -731,8 +732,8 @@ async def test_handle_voice_timeout_replies(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_handle_mention_only_botname_no_text_ignored():
-    """task_router.py:263 — message is '@bot' with nothing after → return."""
+async def test_handle_mention_only_botname_no_text_hints():
+    """Message is '@bot' with nothing after → hint reply, no parser call."""
     from planner.bot.handlers.task_router import handle_mention_or_dm
     intent = ClarifyIntent(question="X")
     msg, answers = _message()
@@ -740,7 +741,8 @@ async def test_handle_mention_only_botname_no_text_ignored():
     msg.chat = SimpleNamespace(type="private")
     parser = _FakeParser(intent)
     await handle_mention_or_dm(msg, parser, {"is_admin": False})  # type: ignore[arg-type]
-    assert len(answers.calls) == 0  # no reply
+    assert len(answers.calls) == 1
+    assert "Слушаю" in answers.calls[0]
 
 
 # ---------------------------------------------------------------------------
