@@ -14,7 +14,7 @@ from planner.domain.models import (
     PlanRequest,
     Task,
 )
-from planner.domain.solver.greedy import GreedySolver
+from planner.domain.solver.greedy import GreedySolver, NoPeopleError
 
 START = date(2026, 6, 1)  # Monday
 CAL = WeekendCalendar()
@@ -162,6 +162,32 @@ def test_orphaned_dep_node_skipped_and_successor_still_scheduled():
     dep = Dependency(task_id=t_follow.id, depends_on_id=orphan_id, link_type="FS")
     res = _solve([p], [t_follow], [dep])
     assert res.by_task().get(t_follow.id) is not None
+
+
+def test_empty_people_pool_with_tasks_raises_clear_error():
+    """greedy.py:323 — tasks with people=() must raise NoPeopleError, not AssertionError."""
+    t = _task([], hours=8)
+    with pytest.raises(NoPeopleError, match="people"):
+        _solve([], [t])
+
+
+def test_empty_people_pool_window_task_raises_clear_error():
+    """greedy.py:306 — window task with people=() must raise NoPeopleError, not IndexError."""
+    t = Task(
+        id=uuid4(),
+        name="Окно",
+        duration_hours=8,
+        allowed_person_ids=(),
+        duration_is_window=True,
+    )
+    with pytest.raises(NoPeopleError):
+        _solve([], [t])
+
+
+def test_empty_people_pool_without_tasks_returns_empty_plan():
+    res = _solve([], [])
+    assert res.assignments == ()
+    assert res.end_date is None
 
 
 def test_splittable_horizon_overload():

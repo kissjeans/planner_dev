@@ -35,6 +35,7 @@ from planner.domain.models import (
     RiskFlag,
     Task,
 )
+from planner.domain.solver.greedy import NoPeopleError
 from planner.domain.solver.ports import SolverPort
 
 log = structlog.get_logger(__name__)
@@ -247,6 +248,11 @@ class AddProjectUseCase:
             plan = self._solver.plan(req)
         except nx.NetworkXUnfeasible as exc:
             raise InvalidProjectError("Цикл в зависимостях шаблона.") from exc
+        except NoPeopleError as exc:
+            raise InvalidProjectError(
+                "Не могу построить план: в системе нет ни одного исполнителя. "
+                "Добавьте людей через seed или веб-админку."
+            ) from exc
         earliest_end = (
             self._solver.presented_earliest_end(req, today)
             if intent.deadline is None

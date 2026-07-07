@@ -269,6 +269,23 @@ async def test_cyclic_template_raises_invalid_and_writes_nothing():
 
 
 @pytest.mark.asyncio
+async def test_empty_people_pool_raises_friendly_message_and_writes_nothing():
+    """Empty roster (dev DB reset) must yield a friendly error, not a traceback."""
+    repo = FakeRepo()
+    p = _person()  # template references a person absent from the roster
+    uc = AddProjectUseCase(repo, _solver())
+
+    with pytest.raises(InvalidProjectError, match="нет ни одного исполнителя"):
+        await uc.execute(
+            _intent(), _actor(), people=(), template=_template(p.id), today=TODAY,
+        )
+
+    assert repo.projects == {}       # no orphan project row
+    assert repo.plan_versions == {}  # no plan version
+    assert repo.saved_tasks == []    # no task rows written
+
+
+@pytest.mark.asyncio
 async def test_add_project_persists_tasks_with_schedule():
     repo = FakeRepo()
     p = _person()

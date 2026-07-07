@@ -41,6 +41,10 @@ HORIZON_DAYS = 365
 DAY_HOURS = 8
 
 
+class NoPeopleError(ValueError):
+    """The request has tasks but an empty people pool — nothing to schedule onto."""
+
+
 class CapacityIndex:
     """Tracks used hours per (person, day) and answers remaining capacity."""
 
@@ -261,6 +265,8 @@ class GreedySolver:
         self.calendar = calendar
 
     def plan(self, req: PlanRequest) -> PlanResult:
+        if req.tasks and not req.people:
+            raise NoPeopleError("Cannot plan tasks: the people pool is empty.")
         graph = build_dag(list(req.tasks), list(req.dependencies))
         # Raises networkx.NetworkXUnfeasible on a cycle (spec acceptance).
         order = list(nx.topological_sort(graph))
