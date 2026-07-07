@@ -38,7 +38,7 @@ Run through this before promoting `planner_dev` to a production environment.
 
 ## Network exposure
 
-- [ ] `docker-compose.yml` binds all published ports (`8000`, `5433`, `6380`) to
+- [ ] `docker-compose.yml` binds all published ports (`8000`, `5435`, `6380`) to
       `127.0.0.1` by default — verify no override re-exposes them on `0.0.0.0`.
       Admin web (`:8000`) is reached only over VPN / SSH tunnel. The bot
       long-polls outbound, so no inbound port is needed for it.

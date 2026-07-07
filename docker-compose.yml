@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: planner
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-planner}
     ports:
-      - "127.0.0.1:5433:5432"
+      - "127.0.0.1:5435:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -39,7 +39,7 @@ services:
     env_file: .env
     environment:
       # Overrides any DATABASE_URL from .env: in compose the app must use the
-      # in-network postgres:5432, not the host-run localhost:5433 from .env.
+      # in-network postgres:5432, not the host-run localhost:5435 from .env.
       DATABASE_URL: postgresql+asyncpg://planner:${POSTGRES_PASSWORD:-planner}@postgres:5432/planner
     ports:
       - "127.0.0.1:8000:8000"          # FastAPI admin board

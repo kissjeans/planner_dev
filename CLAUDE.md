@@ -36,9 +36,9 @@ linted by ruff but not strictly typed. ruff rules: `E,F,I,UP,B,SIM`, line-length
 ## Infra & local gotcha
 
 `docker compose up -d` starts Postgres + Redis. **Compose remaps host ports** to avoid
-clashing with any system Postgres/Redis: Postgres `5433→5432`, Redis `6380→6379`, app
+clashing with any system Postgres/Redis: Postgres `5435→5432`, Redis `6380→6379`, app
 `8000`. When running the app on the host (`make dev`) against compose infra, `.env` must
-point at the remapped ports — `DATABASE_URL=...@localhost:5433/planner`,
+point at the remapped ports — `DATABASE_URL=...@localhost:5435/planner`,
 `REDIS_URL=redis://localhost:6380/0` — even though `.env.example` shows the in-container
 5432/6379. The Docker `app` service (and `docker-entrypoint.sh`, which runs `alembic
 upgrade head` then `python -m planner.main`) uses the in-network ports instead.

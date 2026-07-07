@@ -48,7 +48,7 @@ uv sync --extra dev
 # 3. Config
 cp .env.example .env            # fill BOT_TOKEN, ANTHROPIC_API_KEY, ADMIN_IDS, ...
 # NB: compose remaps host ports — when running on the host, point .env at
-# localhost:5433 (postgres) and localhost:6380 (redis).
+# localhost:5435 (postgres) and localhost:6380 (redis).
 
 # 4. DB + seed
 uv run alembic upgrade head

@@ -12,8 +12,8 @@ cov:        ## Tests with coverage (target 80%+)
 seed:       ## Load YAML seed data into the DB
 	uv run python -m seed.load
 
-migrate:    ## Apply Alembic migrations
-	uv run alembic upgrade head
+migrate:    ## Apply Alembic migrations (loads .env — alembic only reads the env var)
+	set -a; [ -f .env ] && . ./.env; set +a; uv run alembic upgrade head
 
 lint:       ## Ruff + mypy (domain is strict)
 	uv run ruff check src tests
