@@ -20,6 +20,8 @@ _TIMEOUT_S = 10.0
 class NullTaskSink:
     """No-op sink used when Notion is not configured (keyless degrade)."""
 
+    is_noop = True  # lets app-layer callers skip mirror bookkeeping without importing infra
+
     async def push_task(self, task: SinkTask) -> str | None:
         return None
 

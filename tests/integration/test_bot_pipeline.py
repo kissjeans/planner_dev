@@ -155,7 +155,7 @@ async def test_add_project_proposes_then_confirm_commits(
     assert proposed is not None and proposed[0] == "proposed"
 
     committed = await ConfirmPlanUseCase(repo).execute(pv_id, andrey)
-    assert committed.status == "committed"
+    assert committed.plan.status == "committed"
 
     row = await _scalar(
         db_session_factory,
