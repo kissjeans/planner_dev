@@ -50,10 +50,13 @@ def _text_value(prop_type: str, values: list[str]) -> dict[str, Any] | None:
     return None
 
 
-def _snap_to_options(meta: dict[str, Any], values: list[str]) -> list[str]:
+def _snap_to_options(
+    meta: dict[str, Any], values: list[str], strict: bool = False
+) -> list[str]:
     """Snap each value to an existing select/multi_select option by token overlap
     (e.g. 'Рай' -> 'Рай Таиров'). Keep the value as-is when no option matches
-    (Notion then creates a new option). First match wins on ambiguity."""
+    (Notion then creates a new option) — unless ``strict``, which drops it: some
+    boards reject page creates that would add a new option. First match wins."""
     options = [o["name"] for o in meta.get(meta["type"], {}).get("options", [])]
     snapped: list[str] = []
     for value in values:
@@ -61,11 +64,15 @@ def _snap_to_options(meta: dict[str, Any], values: list[str]) -> list[str]:
         match = next(
             (o for o in options if low in o.lower() or o.lower() in low), None
         )
+        if match is None and strict:
+            continue
         snapped.append(match or value)
     return snapped
 
 
-def build_properties(schema: dict[str, Any], task: SinkTask) -> dict[str, Any]:
+def build_properties(
+    schema: dict[str, Any], task: SinkTask, strict: bool = False
+) -> dict[str, Any]:
     props: dict[str, Any] = {}
 
     # Title — the single required property of a Notion DB.
@@ -86,8 +93,8 @@ def build_properties(schema: dict[str, Any], task: SinkTask) -> dict[str, Any]:
         if a:
             names = task.assignees
             if schema[a]["type"] in ("multi_select", "select"):
-                names = _snap_to_options(schema[a], names)
-            value = _text_value(schema[a]["type"], names)
+                names = _snap_to_options(schema[a], names, strict=strict)
+            value = _text_value(schema[a]["type"], names) if names else None
             if value:
                 props[a] = value
 
@@ -97,8 +104,8 @@ def build_properties(schema: dict[str, Any], task: SinkTask) -> dict[str, Any]:
         if p:
             values = [task.project]
             if schema[p]["type"] in ("multi_select", "select"):
-                values = _snap_to_options(schema[p], values)
-            value = _text_value(schema[p]["type"], values)
+                values = _snap_to_options(schema[p], values, strict=strict)
+            value = _text_value(schema[p]["type"], values) if values else None
             if value:
                 props[p] = value
 

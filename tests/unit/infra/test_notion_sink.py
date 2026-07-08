@@ -82,6 +82,29 @@ def test_mapping_snaps_assignee_to_existing_option():
     assert [o["name"] for o in props["Assign_new"]["multi_select"]] == ["Рай Таиров"]
 
 
+def test_mapping_strict_drops_unknown_options_keeps_snapped():
+    """strict=True: values with no matching existing option are dropped;
+    snapped ones and the status default (an existing option) stay."""
+    from planner.infra.notion.mapping import build_properties
+    schema = {
+        "Name": {"type": "title"},
+        "Status": {"type": "select",
+                   "select": {"options": [{"name": "Сделать"}, {"name": "Готово"}]}},
+        "Assign_new": {"type": "multi_select", "multi_select": {"options": [
+            {"name": "Айгуль Сайфутдинова"}]}},
+        "Заказчик_new": {"type": "multi_select", "multi_select": {"options": []}},
+    }
+    props = build_properties(
+        schema,
+        SinkTask(title="т", assignees=["Айгуль", "Тоня"], project="МТС", deadline=None),
+        strict=True,
+    )
+    assert [o["name"] for o in props["Assign_new"]["multi_select"]] == [
+        "Айгуль Сайфутдинова"]
+    assert "Заказчик_new" not in props, "unknown project must be dropped in strict mode"
+    assert props["Status"]["select"]["name"] == "Сделать"
+
+
 @pytest.mark.asyncio
 async def test_notion_sink_creates_page(monkeypatch):
     from planner.infra.notion import client as mod
@@ -199,3 +222,99 @@ async def test_notion_sink_retries_with_safe_props_on_400(monkeypatch):
     assert url == "https://notion.so/p1"
     assert len(posts) == 2, "no retry happened"
     assert set(posts[1]["properties"]) == {"Name", "Дата"}, "retry must keep only safe props"
+
+
+@pytest.mark.asyncio
+async def test_notion_sink_strict_retry_keeps_snapped_assignee(monkeypatch):
+    """First 4xx → retry with strict props: the snapped assignee survives,
+    only the unknown one is dropped, and the page url comes back."""
+    from planner.infra.notion import client as mod
+
+    posts = []
+
+    class _Resp:
+        def __init__(self, data, code=200):
+            self._data = data
+            self.status_code = code
+            self.text = "Unsaved transactions: Expected to find other side of the relation"
+        def json(self):
+            return self._data
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise RuntimeError("http")
+
+    class _Client:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, url, **k):
+            return _Resp({"properties": {
+                "Name": {"type": "title"},
+                "Assign": {"type": "multi_select", "multi_select": {"options": [
+                    {"name": "Айгуль Сайфутдинова"}]}},
+            }})
+        async def post(self, url, **k):
+            posts.append(k["json"])
+            if len(posts) == 1:
+                return _Resp({"message": "relation"}, code=400)
+            return _Resp({"id": "p1", "url": "https://notion.so/p1"})
+
+    monkeypatch.setattr(mod.httpx, "AsyncClient", _Client)
+    sink = mod.NotionTaskSink("ntn_x", "db1")
+    url = await sink.push_task(
+        SinkTask(title="бриф", assignees=["Айгуль", "Тоня"], project=None, deadline=None)
+    )
+    assert url == "https://notion.so/p1"
+    assert len(posts) == 2, "exactly one retry expected"
+    retry_assign = posts[1]["properties"]["Assign"]["multi_select"]
+    assert [o["name"] for o in retry_assign] == ["Айгуль Сайфутдинова"]
+
+
+@pytest.mark.asyncio
+async def test_notion_sink_falls_back_to_title_date_after_two_400s(monkeypatch):
+    """400 → strict retry also 400 → final title+date fallback (three POSTs)."""
+    from datetime import date
+
+    from planner.infra.notion import client as mod
+
+    posts = []
+
+    class _Resp:
+        def __init__(self, data, code=200):
+            self._data = data
+            self.status_code = code
+            self.text = "Unsaved transactions: Expected to find other side of the relation"
+        def json(self):
+            return self._data
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise RuntimeError("http")
+
+    class _Client:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, url, **k):
+            return _Resp({"properties": {
+                "Name": {"type": "title"},
+                "Дата": {"type": "date"},
+                "Assign": {"type": "multi_select", "multi_select": {"options": [
+                    {"name": "Айгуль Сайфутдинова"}]}},
+            }})
+        async def post(self, url, **k):
+            posts.append(k["json"])
+            if len(posts) < 3:
+                return _Resp({"message": "relation"}, code=400)
+            return _Resp({"id": "p1", "url": "https://notion.so/p1"})
+
+    monkeypatch.setattr(mod.httpx, "AsyncClient", _Client)
+    sink = mod.NotionTaskSink("ntn_x", "db1")
+    url = await sink.push_task(
+        SinkTask(title="бриф", assignees=["Айгуль", "Тоня"], project=None,
+                 deadline=date(2026, 7, 7))
+    )
+    assert url == "https://notion.so/p1"
+    assert len(posts) == 3, "strict retry then title+date fallback expected"
+    strict_assign = posts[1]["properties"]["Assign"]["multi_select"]
+    assert [o["name"] for o in strict_assign] == ["Айгуль Сайфутдинова"]
+    assert set(posts[2]["properties"]) == {"Name", "Дата"}
