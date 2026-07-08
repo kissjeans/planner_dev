@@ -148,3 +148,24 @@ async def test_agent_live_calls_plausible_tools(utterance, expected_tools):
     assert expected_tools & set(toolbox.called), (
         f"{utterance!r} fired {toolbox.called!r}, expected one of {expected_tools!r}"
     )
+
+
+@pytest.mark.skipif(not _RUN, reason="set RUN_AGENT_EVAL=1 and ANTHROPIC_API_KEY")
+@pytest.mark.asyncio
+async def test_agent_live_complaint_does_not_capture():
+    """Regression (work chat 2026-07-08): a complaint about the bot's own
+    mistake («Ты её ни на кого не назначил») must NOT create a task —
+    the agent produced three duplicate captures from such messages."""
+    from planner.infra.llm.agent import PlannerAgent
+
+    agent = PlannerAgent(api_key=os.environ["ANTHROPIC_API_KEY"])
+    toolbox = _toolbox(_seeded_repo())
+
+    reply = await agent.run("Ты её ни на кого не назначил", _ctx(), toolbox)
+
+    assert reply.text.strip(), "empty reply to a complaint"
+    assert "capture_task" not in set(toolbox.called), (
+        f"complaint captured a task: fired {toolbox.called!r}"
+    )
+    assert "plan_project" not in set(toolbox.called)
+
