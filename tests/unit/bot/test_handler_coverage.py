@@ -95,6 +95,9 @@ class _MultiParser:
 
 
 class _FakeRepo:
+    async def list_project_tasks(self, project_id):
+        return []  # dedupe guard: no pre-existing tasks in these fakes
+
     def __init__(self, people=(), plans=(), deps=()) -> None:
         self._people = people
         self._plans = list(plans)

@@ -14,9 +14,10 @@ from planner.domain.intent import CaptureTaskIntent
 
 
 class _FakeRepo:
-    def __init__(self, *, known_projects=None, known_people=None) -> None:
+    def __init__(self, *, known_projects=None, known_people=None, known_tasks=None) -> None:
         self._projects = {p.lower(): pr for p, pr in (known_projects or {}).items()}
         self._people = known_people or {}
+        self._tasks = known_tasks or {}  # project_id -> list[TaskRecord]
         self.created_projects: list[str] = []
         self.created_tasks: list[dict[str, Any]] = []
         self.assignments: list[tuple] = []
@@ -43,6 +44,9 @@ class _FakeRepo:
         )
         return TaskRecord(id=uuid4(), name=name, status="not_done",
                           end_date=deadline, duration_hours=duration_hours)
+
+    async def list_project_tasks(self, project_id) -> list[TaskRecord]:
+        return list(self._tasks.get(project_id, []))
 
     async def get_person_by_name(self, name: str) -> PersonRecord | None:
         return self._people.get(name)
@@ -224,6 +228,80 @@ async def test_capture_survives_sink_failure():
     assert result.task_title == "x"
     assert result.notion_url is None
     assert repo.created_tasks  # task persisted despite sink failure
+
+
+# --- dedupe guard: repeated capture of the same task must not duplicate ----
+
+
+def _project_with_task(title: str, status: str = "not_done"):
+    project = ProjectRecord(uuid4(), "Rostic's Молодёжка", "planning")
+    task = TaskRecord(id=uuid4(), name=title, status=status,
+                      end_date=date(2026, 7, 10), duration_hours=8)
+    return project, task
+
+
+@pytest.mark.asyncio
+async def test_capture_skips_duplicate_same_title_same_project():
+    project, existing = _project_with_task("Встреча с клиентом")
+    repo = _FakeRepo(known_projects={project.title: project},
+                     known_tasks={project.id: [existing]})
+    sink = _SpySink()
+    uc = CaptureTaskUseCase(repo, sink=sink)  # type: ignore[arg-type]
+
+    intent = CaptureTaskIntent(task_title="Встреча с клиентом", project_name=project.title)
+    result = await uc.execute(intent, _ACTOR)
+
+    assert result.is_duplicate is True
+    assert result.task_id == existing.id
+    assert result.task_title == existing.name
+    assert result.project_title == project.title
+    assert repo.created_tasks == []  # no second create
+    assert sink.calls == []  # no duplicate Notion card
+
+
+@pytest.mark.asyncio
+async def test_capture_duplicate_check_is_case_and_whitespace_insensitive():
+    project, existing = _project_with_task("Встреча с клиентом")
+    repo = _FakeRepo(known_projects={project.title: project},
+                     known_tasks={project.id: [existing]})
+    uc = CaptureTaskUseCase(repo)  # type: ignore[arg-type]
+
+    intent = CaptureTaskIntent(task_title="  встреча С КЛИЕНТОМ ", project_name=project.title)
+    result = await uc.execute(intent, _ACTOR)
+
+    assert result.is_duplicate is True
+    assert result.task_id == existing.id
+    assert repo.created_tasks == []
+
+
+@pytest.mark.asyncio
+async def test_capture_creates_when_existing_task_is_done():
+    project, existing = _project_with_task("Встреча с клиентом", status="done")
+    repo = _FakeRepo(known_projects={project.title: project},
+                     known_tasks={project.id: [existing]})
+    uc = CaptureTaskUseCase(repo)  # type: ignore[arg-type]
+
+    intent = CaptureTaskIntent(task_title="Встреча с клиентом", project_name=project.title)
+    result = await uc.execute(intent, _ACTOR)
+
+    assert result.is_duplicate is False
+    assert len(repo.created_tasks) == 1
+
+
+@pytest.mark.asyncio
+async def test_capture_creates_same_title_in_different_project():
+    project, existing = _project_with_task("Встреча с клиентом")
+    other = ProjectRecord(uuid4(), "МТС", "planning")
+    repo = _FakeRepo(known_projects={project.title: project, other.title: other},
+                     known_tasks={project.id: [existing]})
+    uc = CaptureTaskUseCase(repo)  # type: ignore[arg-type]
+
+    intent = CaptureTaskIntent(task_title="Встреча с клиентом", project_name="МТС")
+    result = await uc.execute(intent, _ACTOR)
+
+    assert result.is_duplicate is False
+    assert len(repo.created_tasks) == 1
+    assert repo.created_tasks[0]["project_id"] == other.id
 
 
 @pytest.mark.asyncio

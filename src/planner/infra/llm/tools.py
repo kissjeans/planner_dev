@@ -379,6 +379,9 @@ class ToolBox:
         _text, result = await build_capture_reply(
             intent, repo=self._repo, actor_record=self._actor_record, task_sink=self._sink
         )
+        if result.is_duplicate:
+            # No capture happened — skip the «✓ Записал» card and bookkeeping.
+            return _text
         if result.notion_url:
             self.captured_notion_urls.append(result.notion_url)
         confirm = format_capture_confirmation(

@@ -213,6 +213,11 @@ async def build_capture_reply(
     model drops links when it paraphrases tool output).
     """
     result = await CaptureTaskUseCase(repo, sink=task_sink).execute(intent, actor_record)
+    if result.is_duplicate:
+        return (
+            f"Такая задача уже есть в проекте «{result.project_title}» — не дублирую.",
+            result,
+        )
     hint = await _suggestion_hint(intent, repo=repo)
     text = format_capture_confirmation(
         title=result.task_title,

@@ -17,6 +17,7 @@ from planner.app.ports import (
     ProjectRecord,
     RepoPort,
     SinkTask,
+    TaskRecord,
     TaskSinkPort,
 )
 from planner.domain.intent import CaptureTaskIntent
@@ -36,6 +37,9 @@ class CaptureResult:
     notion_url: str | None = None
     task_id: UUID | None = None
     duration_hours: int = _CAPTURE_HOURS
+    # Dedupe guard: the same task was already captured into this project and is
+    # not done yet — nothing was created, the fields describe the EXISTING task.
+    is_duplicate: bool = False
 
 
 class CaptureTaskUseCase:
@@ -59,10 +63,37 @@ class CaptureTaskUseCase:
             actor_id=actor_uuid,
         )
 
+    async def _find_duplicate(self, project_id: UUID, title: str) -> TaskRecord | None:
+        """Existing not-done task with the same normalized title in the project."""
+        wanted = title.strip().lower()
+        for task in await self._repo.list_project_tasks(project_id):
+            if task.status != "done" and task.name.strip().lower() == wanted:
+                return task
+        return None
+
     async def execute(
         self, intent: CaptureTaskIntent, actor: PersonRecord | None
     ) -> CaptureResult:
         project = await self._resolve_project(intent.project_name, actor)
+        # Mechanical dedupe guard: the agent may re-read a complaint about a task
+        # as a fresh capture; never create the same not-done task twice.
+        duplicate = await self._find_duplicate(project.id, intent.task_title)
+        if duplicate is not None:
+            log.info(
+                "capture_duplicate_skipped",
+                title=intent.task_title,
+                project=project.title,
+                existing_task_id=str(duplicate.id),
+            )
+            return CaptureResult(
+                task_title=duplicate.name,
+                project_title=project.title,
+                assignee_names=[],
+                deadline_iso=duplicate.end_date.isoformat() if duplicate.end_date else None,
+                task_id=duplicate.id,
+                duration_hours=duplicate.duration_hours,
+                is_duplicate=True,
+            )
         # A hallucinated est_hours <= 0 would create a 0-hour task that corrupts
         # load math; clamp it to the default rather than rejecting the intent.
         est = intent.est_hours

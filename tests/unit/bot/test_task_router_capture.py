@@ -20,6 +20,9 @@ from planner.domain.intent import CaptureTaskIntent
 class _CaptureRepo:
     """Minimal repo double for the capture + suggest flow."""
 
+    async def list_project_tasks(self, project_id):
+        return []  # dedupe guard: no pre-existing tasks in these fakes
+
     def __init__(self, *, capabilities=(), people=None) -> None:
         self.capabilities = tuple(capabilities)
         self._people = people or {}

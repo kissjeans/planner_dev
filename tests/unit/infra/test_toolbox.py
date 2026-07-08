@@ -65,6 +65,9 @@ class _Person:
 class FakeRepo:
     """Async repo double recording calls and returning canned data."""
 
+    async def list_project_tasks(self, project_id):
+        return []  # dedupe guard: no pre-existing tasks in these fakes
+
     def __init__(
         self,
         *,
