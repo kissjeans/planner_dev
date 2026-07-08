@@ -7,7 +7,7 @@ which lets ``instructor`` and the bot router branch without isinstance soup.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, time
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -81,6 +81,9 @@ class CaptureTaskIntent(BaseModel):
     assignee_names: list[str] = Field(default_factory=list, max_length=10)
     project_name: str | None = Field(default=None, max_length=200)
     deadline: date | None = None
+    # Time of day («встреча в 10:15») — displayed and mirrored, not solver input:
+    # scheduling stays day-granular, the hour lives on the task itself.
+    time_start: time | None = None
     # LLM-inferred enrichment (spec section 3, step 2). Both stay null/empty when
     # the model is unsure — the capture path never interrogates to fill them.
     est_hours: int | None = None

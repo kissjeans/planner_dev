@@ -37,7 +37,7 @@ class _CaptureRepo:
                              brief_return_date, actor_id) -> ProjectRecord:
         return ProjectRecord(uuid4(), title, "planning", deadline)
 
-    async def create_task(self, *, project_id, name, duration_hours, deadline,
+    async def create_task(self, *, project_id, name, duration_hours, deadline, time_start=None,
                           actor_id, required_skills=None) -> TaskRecord:
         self.created_tasks.append({"name": name, "required_skills": required_skills})
         return TaskRecord(id=uuid4(), name=name, status="not_done",

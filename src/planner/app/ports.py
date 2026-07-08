@@ -8,7 +8,7 @@ tests supply a fake.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, time
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -22,6 +22,7 @@ class SinkTask:
     assignees: list[str]
     project: str | None
     deadline: date | None
+    time_start: time | None = None  # time of day, mirrored into the date property
 
 
 class TaskSinkPort(Protocol):
@@ -166,6 +167,7 @@ class RepoPort(Protocol):
         name: str,
         duration_hours: int,
         deadline: date | None,
+        time_start: time | None = None,
         actor_id: UUID | None,
         required_skills: list[str] | None = None,
     ) -> TaskRecord:

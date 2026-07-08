@@ -109,6 +109,11 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                 "assignees": {"type": "array", "items": {"type": "string"}},
                 "project": {"type": "string"},
                 "deadline": {"type": "string", "description": "YYYY-MM-DD"},
+                "time_start": {
+                    "type": "string",
+                    "description": "HH:MM — время начала, если в сообщении "
+                    "указано время дня («в 10:15», «к 15:00»)",
+                },
                 "est_hours": {"type": "integer"},
                 "required_skills": {"type": "array", "items": {"type": "string"}},
             },
@@ -373,6 +378,7 @@ class ToolBox:
             assignee_names=assignees,
             project_name=project,
             deadline=deadline,
+            time_start=args.get("time_start") or None,  # pydantic parses "HH:MM"
             est_hours=args.get("est_hours"),
             required_skills=[str(s) for s in (args.get("required_skills") or [])],
         )

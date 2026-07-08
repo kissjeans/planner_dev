@@ -7,7 +7,7 @@ objects (Law of Demeter, spec section 0).
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, time
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -235,6 +235,7 @@ class SqlAlchemyRepo:
         deadline: date | None,
         actor_id: UUID | None,
         required_skills: list[str] | None = None,
+        time_start: time | None = None,
     ) -> TaskRecord:
         task_id = uuid4()
         async with self._sf() as s, s.begin():
@@ -245,6 +246,7 @@ class SqlAlchemyRepo:
                     name=name,
                     duration_hours=duration_hours,
                     end_date=deadline,
+                    time_start=time_start,
                     status="not_done",
                     source="bot_formed",
                     required_skills=list(required_skills or []),

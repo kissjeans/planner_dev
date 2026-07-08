@@ -239,3 +239,17 @@ async def test_parse_intents_returns_one_element_list():
     assert len(out) == 1
     assert out[0].kind == "load"
     assert out[0].person_name == "Айгуль"
+
+def test_capture_parses_time_of_day():
+    """«в 10:15» — keyless-путь тоже не теряет время встречи."""
+    from datetime import time
+
+    i = P.parse_sync("встреча с клиентом сегодня в 10:15", CTX)
+    assert i.kind == "capture_task"
+    assert i.time_start == time(10, 15)
+
+
+def test_capture_ignores_invalid_time():
+    i = P.parse_sync("встреча в 99:99 по проекту", CTX)
+    assert i.kind == "capture_task"
+    assert i.time_start is None

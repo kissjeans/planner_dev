@@ -171,7 +171,7 @@ class FakeRepo:
         self.created_projects.append(title)
         return ProjectRecord(project_id or uuid4(), title, "planning", deadline)
 
-    async def create_task(self, *, project_id, name, duration_hours, deadline,
+    async def create_task(self, *, project_id, name, duration_hours, deadline, time_start=None,
                           actor_id, required_skills=None) -> TaskRecord:
         self.created_tasks.append({"name": name})
         return TaskRecord(id=uuid4(), name=name, status="not_done",

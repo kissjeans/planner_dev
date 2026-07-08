@@ -1,7 +1,7 @@
 """SQLAlchemy ORM models for all planner domain tables."""
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Any
 
 from sqlalchemy import (
@@ -12,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     String,
     Text,
+    Time,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -225,6 +226,9 @@ class Task(Base):
     duration_hours: Mapped[int] = mapped_column(nullable=False)
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Time of day for timed tasks (meetings): display/mirror only, the solver
+    # stays day-granular (hourly scheduling is deferred to v2).
+    time_start: Mapped[time | None] = mapped_column(Time, nullable=True)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="not_done")
     source: Mapped[str] = mapped_column(Text, nullable=False, default="bot_formed")
     required_skills: Mapped[list[str]] = mapped_column(

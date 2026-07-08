@@ -103,6 +103,7 @@ class CaptureTaskUseCase:
             name=intent.task_title,
             duration_hours=duration,
             deadline=intent.deadline,
+            time_start=intent.time_start,
             actor_id=actor.id if actor else None,
             required_skills=list(intent.required_skills),
         )
@@ -134,16 +135,22 @@ class CaptureTaskUseCase:
                         assignees=assignee_names,
                         project=project.title,
                         deadline=intent.deadline,
+                        time_start=intent.time_start,
                     )
                 )
             except Exception as exc:  # noqa: BLE001 — Notion mirror is best-effort
                 log.warning("notion_mirror_failed", error=str(exc))
 
+        deadline_iso = intent.deadline.isoformat() if intent.deadline else None
+        if deadline_iso and intent.time_start:
+            # «2026-07-08 10:15» — both consumers (bot reply, agent card) show
+            # the time of day without any format changes on their side.
+            deadline_iso += f" {intent.time_start:%H:%M}"
         return CaptureResult(
             task_title=intent.task_title,
             project_title=project.title,
             assignee_names=assignee_names,
-            deadline_iso=intent.deadline.isoformat() if intent.deadline else None,
+            deadline_iso=deadline_iso,
             notion_url=notion_url,
             task_id=task.id,
             duration_hours=duration,

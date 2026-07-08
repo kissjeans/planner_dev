@@ -81,10 +81,15 @@ def build_properties(
         props[title_name] = {"title": [{"text": {"content": task.title}}]}
 
     # Deadline -> a date property (matched by name, else the first date column).
+    # A time of day («встреча в 10:15») upgrades the value to a datetime so
+    # Notion shows the hour on the card.
     if task.deadline:
         d = _find(schema, _DATE_RE, ("date",)) or _first_of_type(schema, "date")
         if d:
-            props[d] = {"date": {"start": task.deadline.isoformat()}}
+            start = task.deadline.isoformat()
+            if task.time_start is not None:
+                start = f"{start}T{task.time_start:%H:%M}:00"
+            props[d] = {"date": {"start": start}}
 
     # Assignees -> multi_select / select / rich_text (names sent as-is; Notion
     # creates the option if it doesn't exist).

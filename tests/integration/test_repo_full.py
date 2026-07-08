@@ -671,3 +671,22 @@ async def test_list_audit_pagination(repo):
     rows_page2 = await repo.list_audit(limit=1, offset=1)
     assert len(rows_page1) <= 1
     assert len(rows_page2) <= 1
+
+@pytest.mark.asyncio
+async def test_create_task_persists_time_start(repo, project, db_session_factory):
+    """«встреча в 10:15» — время дня доезжает до Postgres (migration 0010)."""
+    from datetime import time
+
+    task = await repo.create_task(
+        project_id=project, name="Встреча 10:15", duration_hours=1,
+        deadline=date(2026, 7, 8), time_start=time(10, 15), actor_id=None,
+    )
+    try:
+        async with db_session_factory() as s:
+            row = (await s.execute(
+                text("SELECT time_start FROM tasks WHERE id = :id"), {"id": task.id}
+            )).first()
+        assert row is not None and row[0] == time(10, 15)
+    finally:
+        async with db_session_factory() as s, s.begin():
+            await s.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": task.id})

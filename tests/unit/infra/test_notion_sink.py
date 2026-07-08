@@ -318,3 +318,17 @@ async def test_notion_sink_falls_back_to_title_date_after_two_400s(monkeypatch):
     strict_assign = posts[1]["properties"]["Assign"]["multi_select"]
     assert [o["name"] for o in strict_assign] == ["Айгуль Сайфутдинова"]
     assert set(posts[2]["properties"]) == {"Name", "Дата"}
+
+def test_mapping_deadline_with_time_becomes_datetime():
+    """«встреча в 10:15» — дата в Notion несёт время (datetime, не date)."""
+    from datetime import date, time
+
+    from planner.infra.notion.mapping import build_properties
+
+    schema = {"Name": {"type": "title"}, "Дата": {"type": "date"}}
+    props = build_properties(
+        schema,
+        SinkTask(title="Встреча", assignees=[], project=None,
+                 deadline=date(2026, 7, 8), time_start=time(10, 15)),
+    )
+    assert props["Дата"] == {"date": {"start": "2026-07-08T10:15:00"}}

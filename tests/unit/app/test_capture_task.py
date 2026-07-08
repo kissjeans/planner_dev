@@ -34,12 +34,14 @@ class _FakeRepo:
         return rec
 
     async def create_task(self, *, project_id, name, duration_hours,
-                          deadline, actor_id, required_skills=None) -> TaskRecord:
+                          deadline, actor_id, required_skills=None,
+                          time_start=None) -> TaskRecord:
         self.created_tasks.append(
             {
                 "project_id": project_id, "name": name, "deadline": deadline,
                 "duration_hours": duration_hours,
                 "required_skills": required_skills,
+                "time_start": time_start,
             }
         )
         return TaskRecord(id=uuid4(), name=name, status="not_done",
@@ -321,3 +323,32 @@ async def test_capture_assigns_multiple_people():
     assigned_person_ids = {a[1] for a in repo.assignments}
     assert andrey.id in assigned_person_ids
     assert ray.id in assigned_person_ids
+
+@pytest.mark.asyncio
+async def test_capture_carries_time_of_day():
+    """«встреча в 10:15 на час» — время не теряется (live gap, work chat
+    2026-07-08): оно уходит в create_task, в deadline_iso и в Notion-синк."""
+    from datetime import date, time
+
+    class _Sink:
+        def __init__(self):
+            self.pushed = []
+
+        async def push_task(self, task):
+            self.pushed.append(task)
+            return "https://notion.so/x"
+
+    mts = ProjectRecord(uuid4(), "МТС", "planning")
+    repo = _FakeRepo(known_projects={"МТС": mts})
+    sink = _Sink()
+    uc = CaptureTaskUseCase(repo, sink=sink)  # type: ignore[arg-type]
+    intent = CaptureTaskIntent(
+        task_title="Встреча с клиентом", project_name="МТС",
+        deadline=date(2026, 7, 8), time_start=time(10, 15), est_hours=1,
+    )
+
+    result = await uc.execute(intent, _ACTOR)
+
+    assert repo.created_tasks[0]["time_start"] == time(10, 15)
+    assert result.deadline_iso == "2026-07-08 10:15"
+    assert sink.pushed[0].time_start == time(10, 15)

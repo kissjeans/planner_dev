@@ -24,3 +24,8 @@ def test_prompt_wants_short_reply_to_praise_without_counter_questions():
 
 def test_prompt_ignores_messages_addressed_to_other_people():
     assert "@упоминания другого человека" in AGENT_SYSTEM_PROMPT
+
+
+def test_prompt_demands_time_of_day_in_time_start():
+    assert "time_start" in AGENT_SYSTEM_PROMPT
+    assert "не теряй его" in AGENT_SYSTEM_PROMPT

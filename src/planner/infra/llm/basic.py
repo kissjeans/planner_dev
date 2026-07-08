@@ -32,7 +32,21 @@ _ISO = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
 _DM = re.compile(r"\b(\d{1,2})\s+([а-яё]+)", re.IGNORECASE)
 _DDMM = re.compile(r"\b(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?\b")
 _RANGE = re.compile(r"(\d{1,2})\s*[-–—]\s*(\d{1,2})\s+([а-яё]+)", re.IGNORECASE)
+_TIME = re.compile(r"\b[вк]\s+(\d{1,2}):(\d{2})\b", re.IGNORECASE)
 
+
+
+def _parse_time(text: str):
+    """«в 10:15» / «к 15:00» -> datetime.time, else None."""
+    from datetime import time as dt_time
+
+    m = _TIME.search(text)
+    if not m:
+        return None
+    hour, minute = int(m[1]), int(m[2])
+    if hour > 23 or minute > 59:
+        return None
+    return dt_time(hour, minute)
 
 def _parse_date(text: str, today: date) -> date | None:
     try:
@@ -143,6 +157,7 @@ class BasicIntentParser:
                 task_title=text.strip(),
                 assignee_names=[person] if person else [],
                 deadline=_parse_date(text, ctx.today),
+                time_start=_parse_time(text),
                 # Offline fallback does no enrichment inference (too unreliable).
                 est_hours=None,
                 required_skills=[],
