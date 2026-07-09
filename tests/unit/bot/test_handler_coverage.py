@@ -1535,3 +1535,33 @@ async def test_handle_edit_text_add_project_creates_notion_card_with_link():
     )
     assert len(sink.created) == 1, "project sink must receive the master card"
     assert any("notion.so" in c for c in answers.calls), "reply must carry the link"
+
+@pytest.mark.asyncio
+async def test_strip_markdown_removes_bold_and_underline():
+    from planner.bot.handlers.task_router import _strip_markdown
+
+    assert _strip_markdown("**жирный** и __важный__") == "жирный и важный"
+
+
+@pytest.mark.asyncio
+async def test_handle_edit_text_uses_agent_when_wired():
+    """Live gap 2026-07-09: inside the edit loop messages fell to the regex
+    parser («Не понял команду.») — the agent must drive edits too."""
+    from planner.bot.handlers.task_router import handle_edit_text
+    from planner.infra.llm.agent import AgentReply
+
+    agent = _FakeAgent(AgentReply(text="Пересобрал план под дедлайн."))
+    state = SimpleNamespace(
+        get_data=AsyncMock(return_value={}),
+        update_data=AsyncMock(),
+        clear=AsyncMock(),
+    )
+    msg, answers = _message("нужно вместить до дедлайна")
+    await handle_edit_text(
+        msg, state, _ExplodingParser(), {"is_admin": True},  # type: ignore[arg-type]
+        repo=_FakeRepo(people=(), plans=[]),
+        solver=SimpleNamespace(),  # agent path does not call the solver directly
+        agent=agent,
+    )
+    assert agent.calls, "edit loop did not reach the agent"
+    assert any("Пересобрал" in c for c in answers.calls)

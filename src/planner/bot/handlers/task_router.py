@@ -299,6 +299,12 @@ def describe_intent(intent: Intent) -> str:
     return intent.question or "Не понял команду."
 
 
+
+def _strip_markdown(text: str) -> str:
+    """The bot sends plain text: the model's **bold**/__underline__ markers
+    would reach the chat as literal asterisks (live gap, 2026-07-09)."""
+    return text.replace("**", "").replace("__", "")
+
 def confirm_reply_text(result: object) -> str:
     """Reply for a successful confirm, warning when the Notion mirror was partial.
 
@@ -564,7 +570,7 @@ async def _handle_text(
             "\n\n".join(r for r in reply.captured_replies if r.strip())
             if any(r.strip() for r in reply.captured_replies) else reply.text
         )
-        final_text = _append_notion_links(base, reply.notion_urls)
+        final_text = _strip_markdown(_append_notion_links(base, reply.notion_urls))
         # Never send an empty message (Telegram rejects it → silent failure).
         if not final_text.strip():
             final_text = "Готово."
@@ -727,6 +733,7 @@ async def handle_edit_text(
     task_sink: TaskSinkPort | None = None,
     project_sink: ProjectSinkPort | None = None,
     history: ChatHistory | None = None,
+    agent: PlannerAgent | None = None,
 ) -> None:
     """FSM edit loop (spec flow step 14 / scenario J).
 
@@ -749,6 +756,7 @@ async def handle_edit_text(
         repo=repo, solver=solver, actor_record=actor_record, explain_uc=explain_uc,
         confirm_uc=confirm_uc, last_pv_id=old_pv_id, edit_state=state,
         task_sink=task_sink, project_sink=project_sink, history=history,
+        agent=agent,
     )
     # The edit produced a fresh proposal: retire the one it replaces so the
     # project list does not accumulate near-duplicate planning rows, then

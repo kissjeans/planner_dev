@@ -29,3 +29,11 @@ def test_prompt_ignores_messages_addressed_to_other_people():
 def test_prompt_demands_time_of_day_in_time_start():
     assert "time_start" in AGENT_SYSTEM_PROMPT
     assert "не теряй его" in AGENT_SYSTEM_PROMPT
+
+
+def test_prompt_states_exact_backward_buffer():
+    assert "РОВНО 2 рабочих дня" in AGENT_SYSTEM_PROMPT
+
+
+def test_prompt_forbids_markdown_output():
+    assert "ЧИСТЫМ текстом без разметки" in AGENT_SYSTEM_PROMPT
