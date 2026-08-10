@@ -38,6 +38,33 @@ def test_independent_tasks_critical_path_is_one_day():
     assert _end([p], tasks, []) == nth_working_day(CAL, START, 1)
 
 
+def test_window_task_span_ignores_executor_capacity():
+    """A fixed-window task spans hours/8 calendar days, like the greedy solver.
+
+    Regression: the external designer has ``capacity_h=0``, which the duration
+    formula clamped to 1 h/day and turned a 2-day design window into 16 days —
+    inflating the backward-mode date by three weeks.
+    """
+    external = Person(id=uuid4(), name="Дизайн", capacity_h=0)
+    window = Task(
+        id=uuid4(),
+        name="Дизайн презентации",
+        duration_hours=16,
+        allowed_person_ids=(external.id,),
+        duration_is_window=True,
+    )
+    assert _end([external], [window], []) == nth_working_day(CAL, START, 2)
+
+
+def test_dependency_lag_extends_critical_path():
+    """An FS+lag edge (client-feedback wait) counts toward the earliest date."""
+    p = Person(id=uuid4(), name="P", capacity_h=8)
+    first, second = _task(p.id, 8, "t0"), _task(p.id, 8, "t1")
+    deps = [Dependency(second.id, first.id, "FS", lag_working_days=5)]
+    # 1 day + 5 working days of waiting + 1 day
+    assert _end([p], [first, second], deps) == nth_working_day(CAL, START, 7)
+
+
 def test_empty_task_list_returns_first_working_day():
     """max_ef == 0 branch (line 53): no tasks → returns first working day."""
     from planner.domain.solver.critical_path import critical_path_end

@@ -33,12 +33,10 @@ from planner.domain.solver.critical_path import (
     presented_earliest_end as _presented_earliest_end,
 )
 from planner.domain.solver.diff import diff as _diff
-from planner.domain.units import hours_to_working_days
+from planner.domain.units import DAY_HOURS, hours_to_working_days
 
 # Planning horizon: how far ahead the greedy search is allowed to look.
 HORIZON_DAYS = 365
-# Nominal working-day length for window tasks (calendar span = hours / DAY_HOURS).
-DAY_HOURS = 8
 
 
 class NoPeopleError(ValueError):

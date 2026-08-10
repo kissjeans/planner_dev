@@ -9,6 +9,11 @@ from __future__ import annotations
 
 import math
 
+# Nominal working-day length. Fixed-window tasks (external resources) span
+# ``hours / DAY_HOURS`` calendar days regardless of anyone's capacity, so the
+# solver and the critical path must agree on this number.
+DAY_HOURS = 8
+
 
 def hours_to_working_days(hours: int, capacity_h: int) -> int:
     """Round an hour count up to whole working days at ``capacity_h`` per day.
