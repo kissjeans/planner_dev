@@ -45,6 +45,28 @@ def _duration_days(task: Task, people_by_id: dict[UUID, Person]) -> float:
     return task.duration_hours / cap
 
 
+def _is_post_delivery(tid: UUID, g: nx.DiGraph, tasks_by_id: dict[UUID, Task]) -> bool:
+    """True for a trailing task that only waits after the proposal is delivered.
+
+    The manager is promised a date for sending the proposal, not for closing the
+    project. Client feedback carries no work and hangs a five-day wait off the
+    send-off; counting it would report 12 days against a 7-day promise.
+
+    A task qualifies when it does no work, leads nowhere, and every edge into it
+    is a wait. The send-off itself is safe: it also does no work, but it is
+    reached by ordinary lagless edges from the deliverables.
+    """
+    task = tasks_by_id.get(tid)
+    if task is None or task.duration_hours > 0:
+        return False
+    if g.out_degree(tid) > 0:
+        return False
+    incoming = list(g.in_edges(tid))
+    if not incoming:
+        return False
+    return all(g.edges[e].get("lag", 0) > 0 for e in incoming)
+
+
 def critical_path_end(
     req: PlanRequest, start: date, calendar: WorkingCalendar
 ) -> date:
@@ -61,6 +83,8 @@ def critical_path_end(
     ef_days: dict[UUID, float] = {}
     max_ef = 0.0
     for tid in nx.topological_sort(g):
+        if _is_post_delivery(tid, g, tasks_by_id):
+            continue  # waiting on the client happens after we have delivered
         dd = _duration_days(tasks_by_id[tid], people_by_id)
         # A positive lag (e.g. the FS+5 client-feedback wait) delays the
         # successor by that many working days — the greedy solver honours it,

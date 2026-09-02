@@ -73,3 +73,33 @@ def test_empty_task_list_returns_first_working_day():
     result = critical_path_end(req, START, CAL)
     from planner.domain.calendar.rules import first_working_day
     assert result == first_working_day(CAL, START)
+
+
+def test_post_delivery_wait_is_not_part_of_the_earliest_date():
+    """The date shown to the manager is when the proposal goes out.
+
+    The customer's promise is «7 days from brief to sending». Client feedback
+    hangs five waiting days off the send-off and must not inflate that number.
+    """
+    p = Person(id=uuid4(), name="P", capacity_h=8)
+    work = _task(p.id, 8, "Вычитка")
+    sent = Task(id=uuid4(), name="Отправка", duration_hours=0, allowed_person_ids=(p.id,))
+    feedback = Task(
+        id=uuid4(), name="Обратная связь", duration_hours=0, allowed_person_ids=(p.id,)
+    )
+    deps = [
+        Dependency(sent.id, work.id, "FS"),
+        Dependency(feedback.id, sent.id, "FS", lag_working_days=5),
+    ]
+
+    # One working day of work; the send-off adds nothing, the 5-day client wait
+    # sits after delivery and is excluded.
+    assert _end([p], [work, sent, feedback], deps) == nth_working_day(CAL, START, 1)
+
+
+def test_a_lagged_wait_before_delivery_still_counts():
+    """Only post-delivery waiting is dropped — an in-flight wait still counts."""
+    p = Person(id=uuid4(), name="P", capacity_h=8)
+    first, second = _task(p.id, 8, "t0"), _task(p.id, 8, "t1")
+    deps = [Dependency(second.id, first.id, "FS", lag_working_days=5)]
+    assert _end([p], [first, second], deps) == nth_working_day(CAL, START, 7)
