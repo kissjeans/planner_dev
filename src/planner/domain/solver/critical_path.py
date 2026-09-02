@@ -24,19 +24,25 @@ from planner.domain.units import DAY_HOURS
 BACKWARD_BUFFER_WORKING_DAYS = 1
 
 
-def _duration_days(task: Task, people_by_id: dict[UUID, Person]) -> int:
+def _duration_days(task: Task, people_by_id: dict[UUID, Person]) -> float:
+    """Length of a task in working days, kept fractional on purpose.
+
+    The team plans in hours inside a day, so a one-hour task is 1/8 of a day,
+    not a whole one. Rounding each task up to a day made a chain of ten short
+    tasks read as ten days when the solver schedules them in two.
+    """
     if task.duration_is_window:
         # Fixed calendar window (external resource): the span is nominal days,
         # not capacity-derived. An external has capacity_h=0, which would
         # otherwise clamp to 1 h/day and stretch a 2-day window into 16 days.
-        return max(1, math.ceil(task.duration_hours / DAY_HOURS))
+        return float(max(1, math.ceil(task.duration_hours / DAY_HOURS)))
     caps = [
         people_by_id[pid].capacity_h
         for pid in task.allowed_person_ids
         if pid in people_by_id
     ]
-    cap = max(min(caps) if caps else 8, 1)
-    return max(1, math.ceil(task.duration_hours / cap))
+    cap = max(min(caps) if caps else DAY_HOURS, 1)
+    return task.duration_hours / cap
 
 
 def critical_path_end(
@@ -52,8 +58,8 @@ def critical_path_end(
     people_by_id: dict[UUID, Person] = {p.id: p for p in req.people}
     tasks_by_id: dict[UUID, Task] = {t.id: t for t in req.tasks}
 
-    ef_days: dict[UUID, int] = {}
-    max_ef = 0
+    ef_days: dict[UUID, float] = {}
+    max_ef = 0.0
     for tid in nx.topological_sort(g):
         dd = _duration_days(tasks_by_id[tid], people_by_id)
         # A positive lag (e.g. the FS+5 client-feedback wait) delays the
@@ -67,9 +73,10 @@ def critical_path_end(
         ef_days[tid] = ef
         max_ef = max(max_ef, ef)
 
-    if max_ef == 0:
+    whole_days = math.ceil(max_ef)
+    if whole_days <= 0:
         return first_working_day(calendar, start)
-    return nth_working_day(calendar, start, max_ef)
+    return nth_working_day(calendar, start, whole_days)
 
 
 def presented_earliest_end(

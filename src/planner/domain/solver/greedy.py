@@ -107,12 +107,22 @@ def _earliest_start(
     assignments: dict[UUID, Assignment],
     horizon_start: date,
     calendar: WorkingCalendar,
+    tasks_by_id: dict[UUID, Task] | None = None,
 ) -> date:
     """Raise the start past resolved dependencies (FS: after end; SS: at start).
 
-    A positive ``lag`` shifts the successor that many working days later: an
-    FS+5 edge starts the successor on the 5th working day after the predecessor
-    ends. ``lag == 0`` keeps the standard link (next working day for FS).
+    An FS successor may start on the SAME day its predecessor finished: the
+    team plans in hours inside a day, so a one-hour task must not push the next
+    one to tomorrow. Whether it actually fits is decided by the capacity index
+    in the allocator — if the day is full, the task lands on the next one.
+
+    A positive ``lag`` is a real wait and still counts from the day after the
+    predecessor: an FS+5 edge starts the successor on the 5th working day after
+    it ends, regardless of leftover capacity.
+
+    A window predecessor (external resource) also blocks its last day whole —
+    there is no leftover capacity to share, so its successor starts the day
+    after the window closes.
     """
     est = horizon_start
     for dep_id in graph.predecessors(task.id):
@@ -120,17 +130,18 @@ def _earliest_start(
         if a is None:
             continue
         edge = graph.edges[dep_id, task.id]
-        base = (
-            calendar.next_working_day(a.end_date)
-            if edge["link_type"] == "FS"
-            else a.start_date
-        )
         lag = edge.get("lag", 0)
-        cand = (
-            nth_working_day(calendar, base, lag)
-            if lag > 0
-            else first_working_day(calendar, base)
-        )
+        if edge["link_type"] != "FS":
+            cand = first_working_day(calendar, a.start_date)
+        elif lag > 0:
+            cand = nth_working_day(calendar, calendar.next_working_day(a.end_date), lag)
+        else:
+            dep_task = (tasks_by_id or {}).get(dep_id)
+            cand = (
+                calendar.next_working_day(a.end_date)
+                if dep_task is not None and dep_task.duration_is_window
+                else first_working_day(calendar, a.end_date)
+            )
         if cand > est:
             est = cand
     return est
@@ -296,7 +307,12 @@ class GreedySolver:
                 continue  # orphaned dep node — not a real task
             task = tasks_by_id[tid]
             earliest = _earliest_start(
-                task, graph, assignments, req.horizon_start, self.calendar
+                task,
+                graph,
+                assignments,
+                req.horizon_start,
+                self.calendar,
+                tasks_by_id,
             )
             allowed = [
                 people_by_id[pid]

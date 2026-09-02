@@ -201,3 +201,74 @@ def test_splittable_horizon_overload():
     idx = CapacityIndex((p,), CAL, (), ())
     allocs, start, end = _allocate_split(t, p, START, CAL, idx, horizon_limit)
     assert len(allocs) >= 1  # overload alloc dumped on start day
+
+
+# ---------------------------------------------------------------------------
+# Same-day chaining: short tasks must share a working day (customer 2026-08)
+# ---------------------------------------------------------------------------
+
+
+def test_short_chained_tasks_share_one_working_day():
+    """An FS successor starts the same day when the predecessor left capacity.
+
+    The customer plans in hours inside a day: card, brief analysis, environment
+    and research all land on day one. Bumping every successor to the next
+    calendar day turned a 6-day plan into a 10-day one.
+    """
+    cal = WeekendCalendar()
+    a = Person(id=uuid4(), name="A", capacity_h=8)
+    b = Person(id=uuid4(), name="B", capacity_h=8)
+    first = Task(id=uuid4(), name="1ч", duration_hours=1, allowed_person_ids=(a.id,))
+    second = Task(id=uuid4(), name="1ч", duration_hours=1, allowed_person_ids=(b.id,))
+    req = PlanRequest(
+        people=(a, b),
+        tasks=(first, second),
+        dependencies=(Dependency(second.id, first.id, "FS"),),
+        horizon_start=START,
+    )
+
+    plan = GreedySolver(cal).plan(req)
+
+    days = {x.task_id: x.start_date for x in plan.assignments}
+    assert days[first.id] == START
+    assert days[second.id] == START, "successor must fit into the same day"
+
+
+def test_successor_moves_to_next_day_when_capacity_is_spent():
+    """Same-day chaining still respects the daily ceiling."""
+    cal = WeekendCalendar()
+    p = Person(id=uuid4(), name="P", capacity_h=8)
+    first = Task(id=uuid4(), name="8ч", duration_hours=8, allowed_person_ids=(p.id,))
+    second = Task(id=uuid4(), name="1ч", duration_hours=1, allowed_person_ids=(p.id,))
+    req = PlanRequest(
+        people=(p,),
+        tasks=(first, second),
+        dependencies=(Dependency(second.id, first.id, "FS"),),
+        horizon_start=START,
+    )
+
+    plan = GreedySolver(cal).plan(req)
+
+    days = {x.task_id: x.start_date for x in plan.assignments}
+    assert days[first.id] == START
+    assert days[second.id] == cal.next_working_day(START)
+
+
+def test_lag_still_counts_from_the_day_after_the_predecessor():
+    """A lagged edge keeps its waiting days — same-day chaining must not eat them."""
+    cal = WeekendCalendar()
+    p = Person(id=uuid4(), name="P", capacity_h=8)
+    sent = Task(id=uuid4(), name="Отправка", duration_hours=0, allowed_person_ids=(p.id,))
+    reply = Task(id=uuid4(), name="ОС", duration_hours=0, allowed_person_ids=(p.id,))
+    req = PlanRequest(
+        people=(p,),
+        tasks=(sent, reply),
+        dependencies=(Dependency(reply.id, sent.id, "FS", lag_working_days=5),),
+        horizon_start=START,
+    )
+
+    plan = GreedySolver(cal).plan(req)
+
+    days = {x.task_id: x.start_date for x in plan.assignments}
+    expected = nth_working_day(cal, cal.next_working_day(days[sent.id]), 5)
+    assert days[reply.id] == expected
