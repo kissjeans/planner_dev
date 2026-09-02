@@ -69,7 +69,7 @@ tasks:
     name: "Проверка идей и механик"
     duration_hours: 1        # 1 h EACH for four people, asynchronous
     is_splittable: false
-    pair_mode: none
+    pair_mode: each
     optional_in_lite: false
     depends_on: [5]
     assignees:

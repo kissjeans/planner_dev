@@ -230,6 +230,44 @@ def _allocate_window(
     return (), start, end
 
 
+def _allocate_each(
+    task: Task,
+    people: list[Person],
+    earliest: date,
+    calendar: WorkingCalendar,
+    idx: CapacityIndex,
+    horizon_limit: date,
+) -> tuple[tuple[DayAllocation, ...], date, date]:
+    """Charge every assignee the full duration, each on their own earliest day.
+
+    An asynchronous review: «по часу у каждого» costs one hour to each of the
+    four reviewers, and they do not need to be free at the same time. The task
+    is finished when the last of them is done.
+    """
+    allocs: list[DayAllocation] = []
+    for person in people:
+        day = first_working_day(calendar, earliest)
+        placed = None
+        while day <= horizon_limit:
+            if (
+                calendar.is_working_day(day)
+                and idx.remaining(person.id, day) >= task.duration_hours
+            ):
+                placed = day
+                break
+            day += timedelta(days=1)
+        if placed is None:
+            # Never fits within the horizon: dump on the earliest day and let
+            # the overload scan flag it.
+            placed = first_working_day(calendar, earliest)
+        allocs.append(DayAllocation(person.id, placed, task.duration_hours))
+        # Book it immediately so the next reviewer sees the updated load.
+        idx.occupy((allocs[-1],))
+    start = min(a.day for a in allocs)
+    end = max(a.day for a in allocs)
+    return tuple(allocs), start, end
+
+
 def _allocate_pair(
     task: Task,
     p1: Person,
@@ -324,6 +362,20 @@ class GreedySolver:
                 # Fixed calendar window (external resource): no capacity, no race.
                 allocs, start, end = _allocate_window(task, earliest, self.calendar)
                 person = allowed[0]
+            elif task.pair_mode == "each" and len(allowed) >= 2:
+                # Already booked inside the allocator (each reviewer in turn).
+                allocs, start, end = _allocate_each(
+                    task, allowed, earliest, self.calendar, idx, horizon_limit
+                )
+                person = allowed[0]
+                assignments[tid] = Assignment(
+                    task_id=tid,
+                    person_id=person.id,
+                    start_date=start,
+                    end_date=end,
+                    allocations=allocs,
+                )
+                continue
             elif task.pair_mode == "required" and len(allowed) >= 2:
                 allocs, start, end = _allocate_pair(
                     task, allowed[0], allowed[1], earliest,

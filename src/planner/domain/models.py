@@ -14,7 +14,7 @@ from uuid import UUID
 # Hard binding strictness levels (see spec section 4.1 / TZ section 7).
 Strictness = str  # 'A' | 'B' | 'C'
 LinkType = str  # 'FS' | 'SS'
-PairMode = str  # 'none' | 'optional' | 'required'
+PairMode = str  # 'none' | 'optional' | 'required' | 'each'
 
 
 @dataclass(frozen=True)
@@ -35,7 +35,10 @@ class Task:
     breaks ties toward higher priority. A ``done`` task with ``fixed_start`` /
     ``fixed_assignee_id`` is treated as immovable.
 
-    ``pair_mode`` controls multi-assignee behaviour: ``required`` places the two
+    ``pair_mode`` controls multi-assignee behaviour. ``each`` charges every
+    assignee the full duration on their own schedule (an asynchronous review:
+    an hour from each of four people, no common slot needed). ``required``
+    places the two
     top-priority people on the same day(s) at full duration (no speedup);
     ``optional`` allows a second helper but is currently scheduled as a single
     assignee (C2 simplification). ``duration_is_window`` marks a fixed

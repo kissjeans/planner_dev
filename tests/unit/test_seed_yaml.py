@@ -11,7 +11,7 @@ import yaml
 
 SEED_DIR = Path(__file__).parent.parent.parent / "seed"
 
-PAIR_MODES = {"none", "optional", "required"}
+PAIR_MODES = {"none", "optional", "required", "each"}
 # Milestones: the send-off and the client feedback carry no work, only waiting.
 MILESTONE_ORDS = {21, 22}
 # Hours on these are paid by EACH assignee, not shared (async review / meeting).
@@ -248,6 +248,16 @@ def test_variant_excluded_and_overridden_ords_exist(variants, tasks_standard):
 
 def test_per_person_tasks_are_declared(variants):
     assert set(variants["per_person_tasks"]) == PER_PERSON_ORDS
+
+
+def test_per_person_tasks_use_a_multi_assignee_mode(tasks_standard):
+    """Hours paid by each assignee need a mode that charges them all.
+
+    #6 is an asynchronous review ("each"), #20 is a meeting ("required").
+    A plain "none" would bill a single person and lose the other hours.
+    """
+    assert _task(tasks_standard, 6)["pair_mode"] == "each"
+    assert _task(tasks_standard, 20)["pair_mode"] == "required"
 
 
 def test_max_variant_uses_the_base_template_unchanged(variants):

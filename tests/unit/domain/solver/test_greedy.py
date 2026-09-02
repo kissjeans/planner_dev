@@ -272,3 +272,57 @@ def test_lag_still_counts_from_the_day_after_the_predecessor():
     days = {x.task_id: x.start_date for x in plan.assignments}
     expected = nth_working_day(cal, cal.next_working_day(days[sent.id]), 5)
     assert days[reply.id] == expected
+
+
+# ---------------------------------------------------------------------------
+# pair_mode="each": everyone reviews on their own (customer 2026-08, task 6)
+# ---------------------------------------------------------------------------
+
+
+def test_each_mode_charges_every_assignee_their_own_hours():
+    """«По часу у каждого» — four reviewers, four person-hours, no shared slot."""
+    cal = WeekendCalendar()
+    people = [Person(id=uuid4(), name=f"P{i}", capacity_h=8) for i in range(4)]
+    review = Task(
+        id=uuid4(),
+        name="Проверка идей",
+        duration_hours=1,
+        allowed_person_ids=tuple(p.id for p in people),
+        pair_mode="each",
+    )
+    req = PlanRequest(
+        people=tuple(people), tasks=(review,), dependencies=(), horizon_start=START
+    )
+
+    plan = GreedySolver(cal).plan(req)
+
+    (assignment,) = plan.assignments
+    charged = {a.person_id: a.hours for a in assignment.allocations}
+    assert charged == {p.id: 1 for p in people}, "each reviewer pays their own hour"
+
+
+def test_each_mode_does_not_need_a_common_free_slot():
+    """A busy reviewer slides to their own next day without moving the others."""
+    cal = WeekendCalendar()
+    free = Person(id=uuid4(), name="Свободен", capacity_h=8)
+    busy = Person(id=uuid4(), name="Занят", capacity_h=8)
+    filler = Task(id=uuid4(), name="Занятость", duration_hours=8,
+                  allowed_person_ids=(busy.id,))
+    review = Task(
+        id=uuid4(),
+        name="Проверка идей",
+        duration_hours=1,
+        allowed_person_ids=(free.id, busy.id),
+        pair_mode="each",
+    )
+    req = PlanRequest(
+        people=(free, busy), tasks=(filler, review), dependencies=(), horizon_start=START
+    )
+
+    plan = GreedySolver(cal).plan(req)
+
+    review_assignment = next(a for a in plan.assignments if a.task_id == review.id)
+    days = {a.person_id: a.day for a in review_assignment.allocations}
+    assert days[free.id] == START
+    assert days[busy.id] == cal.next_working_day(START)
+    assert not plan.overloads()
