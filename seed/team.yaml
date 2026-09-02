@@ -1,18 +1,19 @@
-# Real presales team (plan C1, §6). Capacity 8h/day for everyone; no part-time.
-# "Дизайн" is an external resource: capacity 0, scheduled as a fixed calendar
-# window (task #12) that consumes no team capacity.
-# Катя / Дима are real roster members but are NOT used by this template.
+# Real presales team (customer update 2026-08, docs/customer-update-2026-08.md).
+# Capacity varies per person: presale is not a full day for everyone.
+# The designer is no longer an external fixed window — they consume team
+# capacity like anyone else (4 h/day).
+# Removed: Лёша (replaced by Антон on technical tasks), Катя, Дима.
 people:
   - name: "Андрей"
     role_label: "Менеджер по продажам"
-    capacity_h: 8
+    capacity_h: 4
     is_admin: true
     is_active: true
     is_external: false
 
   - name: "Рай"
     role_label: "Менеджер по продажам"
-    capacity_h: 8
+    capacity_h: 4
     is_admin: false
     is_active: true
     is_external: false
@@ -25,9 +26,9 @@ people:
     is_external: false
 
   - name: "Айгуль"
-    role_label: "Аналитик"
-    capacity_h: 8
-    is_admin: false
+    role_label: "Лид пресейла"
+    capacity_h: 6          # 4 h today, 6 from October; time-varying capacity
+    is_admin: false        # is not supported yet, so 6 is set up front
     is_active: true
     is_external: false
 
@@ -38,30 +39,23 @@ people:
     is_active: true
     is_external: false
 
-  - name: "Лёша"
+  - name: "Антон"
     role_label: "Технический специалист"
-    capacity_h: 8
+    capacity_h: 4
+    is_admin: false
+    is_active: true
+    is_external: false
+
+  - name: "Даня"
+    role_label: "Лид промо"
+    capacity_h: 4
     is_admin: false
     is_active: true
     is_external: false
 
   - name: "Дизайн"
     role_label: "Дизайнер"
-    capacity_h: 0
-    is_admin: false
-    is_active: true
-    is_external: true
-
-  - name: "Катя"
-    role_label: "Дизайнер"
-    capacity_h: 8
-    is_admin: false
-    is_active: true
-    is_external: false
-
-  - name: "Дима"
-    role_label: "Технический специалист"
-    capacity_h: 8
+    capacity_h: 4
     is_admin: false
     is_active: true
     is_external: false

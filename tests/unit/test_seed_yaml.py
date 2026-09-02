@@ -1,6 +1,7 @@
-"""Unit tests for seed YAML files (real presales data, plan C1 / §6).
+"""Unit tests for seed YAML files (customer update 2026-08).
 
-No database or network required — validates structure and internal consistency.
+No database or network required — validates structure and internal consistency
+against docs/customer-update-2026-08.md and docs/customer-variants-2026-08.md.
 """
 
 from pathlib import Path
@@ -10,10 +11,11 @@ import yaml
 
 SEED_DIR = Path(__file__).parent.parent.parent / "seed"
 
-# Working-day windows excluded from the lite template (§6).
-STANDARD_ONLY_ORDS = {5, 9, 11, 12}
-LITE_ONLY_ORDS = {19}
 PAIR_MODES = {"none", "optional", "required"}
+# Milestones: the send-off and the client feedback carry no work, only waiting.
+MILESTONE_ORDS = {21, 22}
+# Hours on these are paid by EACH assignee, not shared (async review / meeting).
+PER_PERSON_ORDS = {6, 20}
 
 
 def _dep_ord(dep) -> int:
@@ -42,6 +44,11 @@ def tasks_lite() -> dict:
 
 
 @pytest.fixture(scope="module")
+def variants() -> dict:
+    return yaml.safe_load((SEED_DIR / "variants.yaml").read_text())
+
+
+@pytest.fixture(scope="module")
 def team_names(team) -> set[str]:
     return {p["name"] for p in team["people"]}
 
@@ -56,26 +63,41 @@ def _task(tasks: dict, ord_: int) -> dict:
 
 
 def test_team_includes_the_real_core_people(team_names):
-    core = {"Андрей", "Рай", "Тоня", "Айгуль", "Алиса", "Лёша", "Дизайн"}
+    core = {"Андрей", "Рай", "Тоня", "Айгуль", "Алиса", "Антон", "Даня", "Дизайн"}
     assert core <= team_names
 
 
+def test_lyosha_was_replaced_by_anton(team_names):
+    """Лёша is off the roster; Антон carries the technical tasks now."""
+    assert "Лёша" not in team_names
+    assert "Антон" in team_names
+
+
 def test_team_has_at_least_one_admin(team):
-    assert any(p.get("is_admin") for p in team["people"])
+    assert any(p["is_admin"] for p in team["people"])
 
 
-def test_internal_people_have_capacity_8_external_has_zero(team):
-    for person in team["people"]:
-        if person["is_external"]:
-            assert person["capacity_h"] == 0, f"{person['name']} external but capacity != 0"
-        else:
-            assert person["capacity_h"] == 8, f"{person['name']} unexpected capacity"
+def test_capacity_is_per_person_not_a_flat_eight(team):
+    """Presale is not a full day for everyone (customer update §1)."""
+    expected = {
+        "Андрей": 4,
+        "Рай": 4,
+        "Тоня": 8,
+        "Айгуль": 6,
+        "Алиса": 8,
+        "Антон": 4,
+        "Даня": 4,
+        "Дизайн": 4,
+    }
+    actual = {p["name"]: p["capacity_h"] for p in team["people"]}
+    assert actual == expected
 
 
-def test_design_is_the_external_resource(team):
-    design = next(p for p in team["people"] if p["name"] == "Дизайн")
-    assert design["is_external"] is True
-    assert design["capacity_h"] == 0
+def test_designer_is_no_longer_external(team):
+    """The designer now consumes team capacity like everyone else."""
+    designer = next(p for p in team["people"] if p["name"] == "Дизайн")
+    assert designer["is_external"] is False
+    assert designer["capacity_h"] > 0
 
 
 def test_team_names_are_unique(team):
@@ -84,127 +106,184 @@ def test_team_names_are_unique(team):
 
 
 def test_team_required_fields_present(team):
-    required = {"name", "role_label", "capacity_h", "is_admin", "is_active", "is_external"}
     for person in team["people"]:
-        missing = required - person.keys()
-        assert not missing, f"{person.get('name')} missing fields: {missing}"
+        for field in ("name", "role_label", "capacity_h", "is_admin", "is_active"):
+            assert field in person, f"{person.get('name')} missing {field}"
 
 
 # ---------------------------------------------------------------------------
-# tasks_standard.yaml — tasks 1..18
+# tasks_standard.yaml
 # ---------------------------------------------------------------------------
 
 
-def test_standard_is_tasks_1_through_18(tasks_standard):
-    ords = sorted(t["ord"] for t in tasks_standard["tasks"])
-    assert ords == list(range(1, 19))
+def test_standard_is_tasks_1_through_22(tasks_standard):
+    assert {t["ord"] for t in tasks_standard["tasks"]} == set(range(1, 23))
 
 
 def test_standard_deps_reference_valid_ords(tasks_standard):
-    valid_ords = {t["ord"] for t in tasks_standard["tasks"]}
+    valid = {t["ord"] for t in tasks_standard["tasks"]}
     for task in tasks_standard["tasks"]:
         for dep in task.get("depends_on", []):
-            assert _dep_ord(dep) in valid_ords, (
-                f"Task ord={task['ord']} depends on unknown ord={_dep_ord(dep)}"
-            )
+            assert _dep_ord(dep) in valid, f"#{task['ord']} -> {dep}"
 
 
 def test_standard_deps_no_self_reference(tasks_standard):
     for task in tasks_standard["tasks"]:
-        assert task["ord"] not in [_dep_ord(d) for d in task.get("depends_on", [])]
+        assert task["ord"] not in {_dep_ord(d) for d in task.get("depends_on", [])}
 
 
 def test_standard_assignees_in_team(tasks_standard, team_names):
     for task in tasks_standard["tasks"]:
-        for asgn in task.get("assignees", []):
-            assert asgn["name"] in team_names, (
-                f"Task ord={task['ord']}: unknown assignee '{asgn['name']}'"
-            )
+        for a in task["assignees"]:
+            assert a["name"] in team_names, f"#{task['ord']}: {a['name']}"
 
 
 def test_standard_strictness_and_pair_mode_values(tasks_standard):
     for task in tasks_standard["tasks"]:
-        assert task.get("pair_mode", "none") in PAIR_MODES
-        for asgn in task.get("assignees", []):
-            assert asgn["strictness"] in {"A", "B", "C"}
+        assert task["pair_mode"] in PAIR_MODES
+        for a in task["assignees"]:
+            assert a["strictness"] in {"A", "B", "C"}
 
 
-def test_standard_duration_in_range(tasks_standard):
+def test_milestones_have_zero_duration(tasks_standard):
+    """Sending and client feedback are milestones, not work (customer §2)."""
+    for ord_ in MILESTONE_ORDS:
+        assert _task(tasks_standard, ord_)["duration_hours"] == 0
+
+
+def test_working_tasks_have_positive_duration(tasks_standard):
     for task in tasks_standard["tasks"]:
-        assert 1 <= task["duration_hours"] <= 40
-
-
-def test_standard_optional_in_lite_marks_only_5_9_11_12(tasks_standard):
-    flagged = {t["ord"] for t in tasks_standard["tasks"] if t.get("optional_in_lite")}
-    assert flagged == STANDARD_ONLY_ORDS
-
-
-# --- acceptance-anchored invariants -----------------------------------------
+        if task["ord"] in MILESTONE_ORDS:
+            continue
+        assert 1 <= task["duration_hours"] <= 8, f"#{task['ord']}"
 
 
 def test_feedback_task_has_five_working_day_lag(tasks_standard):
-    """R1: #18 follows #17 with a 5-working-day lag."""
-    deps = _task(tasks_standard, 18)["depends_on"]
-    assert deps == [{"ord": 17, "lag_days": 5}]
+    """Client feedback starts 5 working days after the proposal is sent."""
+    deps = _task(tasks_standard, 22)["depends_on"]
+    assert deps == [{"ord": 21, "lag_days": 5}]
+
+
+def test_anton_estimate_is_waited_on_for_one_day(tasks_standard):
+    """Отправка waits 1 working day on Антон's answer (customer §3)."""
+    deps = _task(tasks_standard, 21)["depends_on"]
+    assert {"ord": 17, "lag_days": 1} in deps
+
+
+def test_anton_estimate_starts_early_to_absorb_the_wait(tasks_standard):
+    """#17 hangs off the draft (#5), not off the late chain, so the wait
+    is absorbed by other work instead of extending the deadline."""
+    assert _task(tasks_standard, 17)["depends_on"] == [5]
 
 
 def test_joint_proofread_is_required_pair_of_tonya_and_alisa(tasks_standard):
-    """R2: #16 is strictly Тоня + Алиса together."""
-    t16 = _task(tasks_standard, 16)
-    assert t16["pair_mode"] == "required"
-    assert {a["name"] for a in t16["assignees"]} == {"Тоня", "Алиса"}
+    t20 = _task(tasks_standard, 20)
+    assert t20["pair_mode"] == "required"
+    assert {a["name"] for a in t20["assignees"]} == {"Тоня", "Алиса"}
 
 
-def test_design_task_is_a_window_on_external_resource(tasks_standard):
-    t12 = _task(tasks_standard, 12)
-    assert t12["duration_is_window"] is True
-    assert [a["name"] for a in t12["assignees"]] == ["Дизайн"]
+def test_design_is_ordinary_work_not_a_window(tasks_standard):
+    """The designer is scheduled against capacity now, not as a fixed window."""
+    t15 = _task(tasks_standard, 15)
+    assert t15.get("duration_is_window") is not True
+    assert t15["duration_hours"] == 8
+    assert [a["name"] for a in t15["assignees"]] == ["Дизайн"]
+
+
+def test_reference_cases_have_no_predecessor(tasks_standard):
+    """#7 can be done any time, but must be ready before the assembly (#14)."""
+    assert _task(tasks_standard, 7)["depends_on"] == []
+    assert 7 in {_dep_ord(d) for d in _task(tasks_standard, 14)["depends_on"]}
+
+
+def test_send_off_waits_for_every_deliverable(tasks_standard):
+    """Everything the client sees must be finished before #21."""
+    deps = {_dep_ord(d) for d in _task(tasks_standard, 21)["depends_on"]}
+    assert deps == {10, 11, 12, 13, 15, 17, 19, 20}
 
 
 def test_priority_executor_is_listed_first(tasks_standard):
-    """R3/R4: the starred priority person leads the assignee list (priority 0)."""
-    for ord_, lead in [(2, "Тоня"), (4, "Айгуль"), (6, "Тоня"), (9, "Тоня")]:
-        first = _task(tasks_standard, ord_)["assignees"][0]
-        assert first["name"] == lead and first.get("priority", 0) == 0
+    for task in tasks_standard["tasks"]:
+        priorities = [a["priority"] for a in task["assignees"]]
+        assert priorities == sorted(priorities), f"#{task['ord']}"
 
 
 # ---------------------------------------------------------------------------
-# tasks_lite.yaml
+# variants.yaml
 # ---------------------------------------------------------------------------
 
 
-def test_lite_ord_set_matches_spec(tasks_lite):
-    """§6: lite = {1,2,3,4,6,7,8,10,13,14,15,16,17,18,19}."""
-    expected = {1, 2, 3, 4, 6, 7, 8, 10, 13, 14, 15, 16, 17, 18, 19}
+def _variant_hours(variant: dict, base: dict, per_person_counts: dict) -> int:
+    excluded, overrides = set(variant["excluded"]), variant["hours"]
+    total = 0
+    for ord_, hours in base.items():
+        if ord_ in excluded:
+            continue
+        h = overrides.get(ord_, hours)
+        total += h * per_person_counts.get(ord_, 1)
+    return total
+
+
+def test_three_variants_are_defined(variants):
+    assert [v["code"] for v in variants["variants"]] == ["max", "mid", "min"]
+
+
+def test_variant_hours_match_the_customer_targets(variants, tasks_standard):
+    """Each variant's hours add up to the number the customer signed off."""
+    base = {t["ord"]: t["duration_hours"] for t in tasks_standard["tasks"]}
+    counts = {6: 4, 20: 2}  # people who each pay the task's hours
+    for variant in variants["variants"]:
+        assert _variant_hours(variant, base, counts) == variant["target_hours"], (
+            f"variant {variant['code']}"
+        )
+
+
+def test_variant_excluded_and_overridden_ords_exist(variants, tasks_standard):
+    valid = {t["ord"] for t in tasks_standard["tasks"]}
+    for variant in variants["variants"]:
+        assert set(variant["excluded"]) <= valid
+        assert set(variant["hours"]) <= valid
+        assert set(variant.get("renames", {})) <= valid
+
+
+def test_per_person_tasks_are_declared(variants):
+    assert set(variants["per_person_tasks"]) == PER_PERSON_ORDS
+
+
+def test_max_variant_uses_the_base_template_unchanged(variants):
+    mx = next(v for v in variants["variants"] if v["code"] == "max")
+    assert mx["excluded"] == [] and mx["hours"] == {}
+
+
+# ---------------------------------------------------------------------------
+# tasks_lite.yaml — generated from the "min" variant
+# ---------------------------------------------------------------------------
+
+
+def test_lite_matches_the_min_variant_scope(tasks_lite, variants, tasks_standard):
+    mn = next(v for v in variants["variants"] if v["code"] == "min")
+    expected = {t["ord"] for t in tasks_standard["tasks"]} - set(mn["excluded"])
     assert {t["ord"] for t in tasks_lite["tasks"]} == expected
 
 
-def test_lite_excludes_standard_only_tasks(tasks_lite):
-    ords = {t["ord"] for t in tasks_lite["tasks"]}
-    assert ords.isdisjoint(STANDARD_ONLY_ORDS)
+def test_lite_applies_the_min_variant_hours(tasks_lite, variants):
+    mn = next(v for v in variants["variants"] if v["code"] == "min")
+    for ord_, hours in mn["hours"].items():
+        assert _task(tasks_lite, ord_)["duration_hours"] == hours
 
 
-def test_lite_includes_notion_rollup(tasks_lite):
-    assert LITE_ONLY_ORDS.issubset({t["ord"] for t in tasks_lite["tasks"]})
+def test_lite_renames_the_assembly_to_notion(tasks_lite):
+    assert _task(tasks_lite, 14)["name"] == "Сборка страницы в Ноушене"
 
 
 def test_lite_deps_reference_valid_ords(tasks_lite):
-    valid_ords = {t["ord"] for t in tasks_lite["tasks"]}
+    valid = {t["ord"] for t in tasks_lite["tasks"]}
     for task in tasks_lite["tasks"]:
         for dep in task.get("depends_on", []):
-            assert _dep_ord(dep) in valid_ords, (
-                f"Lite task ord={task['ord']} depends on unknown ord={_dep_ord(dep)}"
-            )
-
-
-def test_lite_drops_proofread_dependency_on_design(tasks_lite):
-    """R5: #16 keeps its required pair but loses its #12 dependency in lite."""
-    t16 = _task(tasks_lite, 16)
-    assert t16["depends_on"] == []
-    assert t16["pair_mode"] == "required"
+            assert _dep_ord(dep) in valid, f"#{task['ord']} -> {dep}"
 
 
 def test_lite_assignees_in_team(tasks_lite, team_names):
     for task in tasks_lite["tasks"]:
-        for asgn in task.get("assignees", []):
-            assert asgn["name"] in team_names
+        for a in task["assignees"]:
+            assert a["name"] in team_names, f"#{task['ord']}: {a['name']}"

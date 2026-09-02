@@ -1,0 +1,55 @@
+# Proposal variants (customer update 2026-08, docs/customer-variants-2026-08.md).
+#
+# Deliberately a separate data file, NOT code: the team is still calibrating
+# these numbers and wants to change hours and scope without a bot release.
+#
+# `hours` overrides the task's duration from tasks_standard.yaml for that
+# variant. A task listed in `excluded` is dropped from the plan entirely.
+# `per_person: true` marks work that costs that many hours to EACH assignee
+# (async review or a joint meeting) rather than a single person's time.
+variants:
+  - code: max
+    title: "Максимум — презентация"
+    description: >
+      Презентация в айдентике клиента с элементами фирстиля, визуальные
+      генерации по мотивам идей, ресёрч аудитории и механик, прототипы.
+    target_hours: 59
+    target_working_days: 6
+    excluded: []
+    hours: {}          # base template hours apply as-is
+
+  - code: mid
+    title: "Средний — упрощённая презентация"
+    description: >
+      Презентация в айдентике клиента без проработки дизайна и без визуальных
+      генераций. Без ресёрча, погружение в клиента — чтение брифа. Прототипы.
+    target_hours: 45
+    target_working_days: 4
+    excluded: [4, 15]  # ресерч аудитории, дизайн презентации
+    hours:
+      5: 4             # драфт идей 6 -> 4
+      14: 4            # сборка презентации 2 -> 4 (своими силами, без дизайнера)
+      18: 2            # оценка разработки 4 -> 2
+
+  - code: min
+    title: "Минимальный — Ноушен"
+    description: >
+      Страница в Ноушене без айдентики и дизайна. Без ресёрча и без
+      кейсов-референсов. Прототипы остаются.
+    target_hours: 39
+    target_working_days: 3
+    excluded: [4, 7, 15]   # ресерч, кейсы-референсы, дизайн презентации
+    hours:
+      5: 4             # драфт идей 6 -> 4
+      9: 3             # подробное описание 4 -> 3
+      11: 3            # МП 4 -> 3
+      12: 2            # техописание 3 -> 2
+      14: 2            # сборка страницы в Ноушене вместо презентации
+      18: 2            # оценка разработки 4 -> 2 (техники меньше)
+    renames:
+      14: "Сборка страницы в Ноушене"
+
+# Tasks whose hours are paid by EACH assignee, not shared between them.
+# 6  — asynchronous review: 1 h each, no common slot needed.
+# 20 — a meeting: 2 h each, the solver must find a slot where both are free.
+per_person_tasks: [6, 20]

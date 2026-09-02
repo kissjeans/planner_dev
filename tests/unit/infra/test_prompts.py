@@ -32,7 +32,7 @@ def test_prompt_demands_time_of_day_in_time_start():
 
 
 def test_prompt_states_exact_backward_buffer():
-    assert "РОВНО 2 рабочих дня" in AGENT_SYSTEM_PROMPT
+    assert "РОВНО 1 рабочий день" in AGENT_SYSTEM_PROMPT
 
 
 def test_prompt_forbids_markdown_output():

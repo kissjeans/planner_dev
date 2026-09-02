@@ -1,15 +1,19 @@
-# Standard presales template (plan C1, §6): tasks 1–18 (everything except #19).
+# Presale template, customer update 2026-08 (docs/customer-update-2026-08.md).
+# 22 tasks, 59 team-hours, target 6 working days + 1 day buffer.
+#
 # Conventions:
-#   duration_hours = working-days × 8 (8h = 1 working day window)
-#   pair_mode: none | optional | required
-#   assignees are priority-ordered (priority 0 = chosen first when free);
-#     '*' priority person from §6 is listed first with strictness A
-#   depends_on: bare int = FS, no lag; {ord, lag_days} = FS + working-day lag
-#   optional_in_lite: true for tasks dropped by the lite template (5, 9, 11, 12)
+#   duration_hours = real hours of work (NOT working-days x 8 any more)
+#   duration_hours: 0 = milestone, no work (tasks 21/22)
+#   pair_mode: none | optional | required ('required' = both at the same time)
+#   assignees are priority-ordered (priority 0 = chosen first when free)
+#   depends_on: bare int = FS no lag; {ord, lag_days} = FS + working-day wait
+#
+# Per-variant scope and hours live in seed/variants.yaml, not here.
 tasks:
+  # --- Блок «Подготовка» ---
   - ord: 1
-    name: "Заполнение брифа"
-    duration_hours: 8
+    name: "Создать карточку проекта"
+    duration_hours: 1
     is_splittable: false
     pair_mode: none
     optional_in_lite: false
@@ -19,54 +23,41 @@ tasks:
       - { name: "Рай", strictness: "A", priority: 1 }
 
   - ord: 2
-    name: "Ресерч аудитории и механик"
-    duration_hours: 8
-    is_splittable: true
-    pair_mode: optional
+    name: "Проанализировать бриф"
+    duration_hours: 1
+    is_splittable: false
+    pair_mode: none
     optional_in_lite: false
     depends_on: [1]
     assignees:
-      - { name: "Тоня", strictness: "A", priority: 0 }
-      - { name: "Алиса", strictness: "B", priority: 1 }
+      - { name: "Алиса", strictness: "A", priority: 0 }
 
   - ord: 3
-    name: "Подготовка драфта идей"
-    duration_hours: 8
-    is_splittable: true
-    pair_mode: optional
+    name: "Создать окружение проекта"
+    duration_hours: 1
+    is_splittable: false
+    pair_mode: none
     optional_in_lite: false
     depends_on: [2]
     assignees:
-      - { name: "Тоня", strictness: "A", priority: 0 }
-      - { name: "Алиса", strictness: "B", priority: 1 }
+      - { name: "Алиса", strictness: "A", priority: 0 }
 
+  # --- Блок «Работа над идеями» ---
   - ord: 4
-    name: "Проверка идей и механик"
-    duration_hours: 8
-    is_splittable: false
+    name: "Ресерч аудитории и механик"
+    duration_hours: 4
+    is_splittable: true
     pair_mode: optional
     optional_in_lite: false
     depends_on: [3]
     assignees:
-      - { name: "Айгуль", strictness: "A", priority: 0 }
-      - { name: "Андрей", strictness: "B", priority: 1 }
-      - { name: "Лёша", strictness: "C", priority: 2 }
+      - { name: "Тоня", strictness: "A", priority: 0 }
+      - { name: "Алиса", strictness: "A", priority: 1 }
 
   - ord: 5
-    name: "Подбор кейсов-референсов"
-    duration_hours: 8
-    is_splittable: false
-    pair_mode: none
-    optional_in_lite: true
-    # §6: soft window across stages 1–9, no hard dependency.
-    depends_on: []
-    assignees:
-      - { name: "Андрей", strictness: "A", priority: 0 }
-
-  - ord: 6
-    name: "Внесение правок"
-    duration_hours: 8
-    is_splittable: false
+    name: "Подготовка драфта идей"
+    duration_hours: 6
+    is_splittable: true
     pair_mode: optional
     optional_in_lite: false
     depends_on: [4]
@@ -74,9 +65,43 @@ tasks:
       - { name: "Тоня", strictness: "A", priority: 0 }
       - { name: "Алиса", strictness: "B", priority: 1 }
 
+  - ord: 6
+    name: "Проверка идей и механик"
+    duration_hours: 1        # 1 h EACH for four people, asynchronous
+    is_splittable: false
+    pair_mode: none
+    optional_in_lite: false
+    depends_on: [5]
+    assignees:
+      - { name: "Айгуль", strictness: "A", priority: 0 }
+      - { name: "Андрей", strictness: "A", priority: 1 }
+      - { name: "Антон", strictness: "A", priority: 2 }
+      - { name: "Даня", strictness: "A", priority: 3 }
+
   - ord: 7
+    name: "Подбор кейсов-референсов"
+    duration_hours: 1
+    is_splittable: false
+    pair_mode: none
+    optional_in_lite: true
+    depends_on: []           # no predecessor; must be ready before task 14
+    assignees:
+      - { name: "Андрей", strictness: "A", priority: 0 }
+
+  - ord: 8
+    name: "Внесение правок"
+    duration_hours: 3
+    is_splittable: false
+    pair_mode: optional
+    optional_in_lite: false
+    depends_on: [6]
+    assignees:
+      - { name: "Тоня", strictness: "A", priority: 0 }
+      - { name: "Алиса", strictness: "B", priority: 1 }
+
+  - ord: 9
     name: "Подробное описание идей"
-    duration_hours: 8
+    duration_hours: 4
     is_splittable: true
     pair_mode: optional
     optional_in_lite: false
@@ -85,117 +110,145 @@ tasks:
       - { name: "Тоня", strictness: "A", priority: 0 }
       - { name: "Алиса", strictness: "B", priority: 1 }
 
-  - ord: 8
+  - ord: 10
     name: "Проверка метрик в описаниях"
-    duration_hours: 8
+    duration_hours: 1
     is_splittable: false
     pair_mode: none
     optional_in_lite: false
-    depends_on: [7]
+    depends_on: [9]
     assignees:
-      - { name: "Айгуль", strictness: "A", priority: 0 }
+      - { name: "Даня", strictness: "A", priority: 0 }
 
-  - ord: 9
-    name: "Подготовка прототипов"
-    duration_hours: 8
+  - ord: 11
+    name: "Расчёт МП и наполнение блока промо"
+    duration_hours: 4
     is_splittable: true
     pair_mode: none
-    optional_in_lite: true
-    depends_on: [7]  # параллельно после 7 (Подробное описание идей)
+    optional_in_lite: false
+    depends_on: [9]
+    assignees:
+      - { name: "Даня", strictness: "A", priority: 0 }
+
+  - ord: 12
+    name: "Добавление технического описания"
+    duration_hours: 3
+    is_splittable: false
+    pair_mode: none
+    optional_in_lite: false
+    depends_on: [9]
+    assignees:
+      - { name: "Тоня", strictness: "A", priority: 0 }
+      - { name: "Алиса", strictness: "B", priority: 1 }
+
+  - ord: 13
+    name: "Подготовка прототипов"
+    duration_hours: 4
+    is_splittable: true
+    pair_mode: none
+    optional_in_lite: false
+    depends_on: [9]
     assignees:
       - { name: "Тоня", strictness: "A", priority: 0 }
 
-  - ord: 10
-    name: "Расчёт МП и блок промо"
-    duration_hours: 16
-    is_splittable: true
-    pair_mode: none
-    optional_in_lite: false
-    depends_on: [7]  # параллельно после 7 (Подробное описание идей)
-    assignees:
-      - { name: "Айгуль", strictness: "A", priority: 0 }
-
-  - ord: 11
-    name: "Вычитка текста + сборка презентации"
-    duration_hours: 8
+  - ord: 14
+    name: "Вычитка текста и сборка презентации"
+    duration_hours: 2
     is_splittable: false
     pair_mode: none
     optional_in_lite: true
-    depends_on: [7]  # параллельно после 7 (Подробное описание идей)
+    depends_on: [9, 7]       # needs the reference cases (7) to be done
     assignees:
       - { name: "Алиса", strictness: "A", priority: 0 }
 
-  - ord: 12
+  - ord: 15
     name: "Дизайн презентации"
-    duration_hours: 16
-    is_splittable: false
-    duration_is_window: true   # external resource: fixed ~2-working-day window, no team capacity
+    duration_hours: 8        # real work now: designer counts against capacity
+    is_splittable: true
     pair_mode: none
     optional_in_lite: true
-    depends_on: [11]
+    depends_on: [14]
     assignees:
       - { name: "Дизайн", strictness: "A", priority: 0 }
 
-  - ord: 13
+  - ord: 16
     name: "Постановка задачи на оценку"
-    duration_hours: 8
+    duration_hours: 1
     is_splittable: false
     pair_mode: none
     optional_in_lite: false
-    depends_on: [7]
+    depends_on: [9]
     assignees:
       - { name: "Айгуль", strictness: "A", priority: 0 }
 
-  - ord: 14
-    name: "Оценка разработки"
-    duration_hours: 8
-    is_splittable: false
-    pair_mode: none
-    optional_in_lite: false
-    depends_on: [13]
-    assignees:
-      - { name: "Лёша", strictness: "A", priority: 0 }
-
-  - ord: 15
-    name: "Оценка стоимости"
-    duration_hours: 8
-    is_splittable: false
-    pair_mode: none
-    optional_in_lite: false
-    depends_on: [14]
-    assignees:
-      - { name: "Андрей", strictness: "A", priority: 0 }
-
-  - ord: 16
-    name: "Вычитка с Алисой"
-    duration_hours: 8
-    is_splittable: false
-    pair_mode: required   # strictly Тоня + Алиса together, no speedup (R2)
-    optional_in_lite: false
-    depends_on: [12]      # lite drops this dependency (#12 not in lite)
-    assignees:
-      - { name: "Тоня", strictness: "A", priority: 0 }
-      - { name: "Алиса", strictness: "A", priority: 1 }
-
   - ord: 17
-    name: "Отправка клиенту"
-    duration_hours: 8
+    name: "Сроки от Антона"
+    duration_hours: 2
+    is_splittable: false
+    pair_mode: none
+    optional_in_lite: false
+    depends_on: [5]          # requested early so the 1-day wait is absorbed
+    assignees:
+      - { name: "Антон", strictness: "A", priority: 0 }
+
+  - ord: 18
+    name: "Оценка разработки"
+    duration_hours: 4
     is_splittable: false
     pair_mode: none
     optional_in_lite: false
     depends_on: [16]
     assignees:
-      - { name: "Андрей", strictness: "A", priority: 0 }
-      - { name: "Рай", strictness: "A", priority: 1 }
+      - { name: "Антон", strictness: "A", priority: 0 }
 
-  - ord: 18
-    name: "Обратная связь от клиентов"
-    duration_hours: 8
+  - ord: 19
+    name: "Оценка стоимости"
+    duration_hours: 1
+    is_splittable: false
+    pair_mode: none
+    optional_in_lite: false
+    depends_on: [18]
+    assignees:
+      - { name: "Андрей", strictness: "A", priority: 0 }
+
+  - ord: 20
+    name: "Вычитка с Алисой"
+    duration_hours: 2        # 2 h each, at the same time (meeting)
+    is_splittable: false
+    pair_mode: required
+    optional_in_lite: false
+    depends_on: [14]
+    assignees:
+      - { name: "Тоня", strictness: "A", priority: 0 }
+      - { name: "Алиса", strictness: "A", priority: 1 }
+
+  - ord: 21
+    name: "Отправка клиенту"
+    duration_hours: 0        # milestone, not work
     is_splittable: false
     pair_mode: none
     optional_in_lite: false
     depends_on:
-      - { ord: 17, lag_days: 5 }   # FS + 5 working days client-feedback wait (R1)
+      - 10
+      - 11
+      - 12
+      - 13
+      - 15
+      - { ord: 17, lag_days: 1 }   # 1 working day waiting for Антон's answer
+      - 19
+      - 20
+    assignees:
+      - { name: "Андрей", strictness: "A", priority: 0 }
+      - { name: "Рай", strictness: "A", priority: 1 }
+
+  - ord: 22
+    name: "Обратная связь от клиентов"
+    duration_hours: 0        # milestone; only the wait matters
+    is_splittable: false
+    pair_mode: none
+    optional_in_lite: false
+    depends_on:
+      - { ord: 21, lag_days: 5 }
     assignees:
       - { name: "Андрей", strictness: "A", priority: 0 }
       - { name: "Рай", strictness: "A", priority: 1 }

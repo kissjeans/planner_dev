@@ -19,7 +19,9 @@ from planner.domain.units import DAY_HOURS
 
 # Backward mode (spec §7): with no deadline the presented earliest date is the
 # raw critical-path finish plus a safety buffer of this many working days.
-BACKWARD_BUFFER_WORKING_DAYS = 2
+# One day, not two: the customer's target is 6 working days of work + 1 buffer
+# = 7 days from brief to sending (docs/customer-update-2026-08.md §3).
+BACKWARD_BUFFER_WORKING_DAYS = 1
 
 
 def _duration_days(task: Task, people_by_id: dict[UUID, Person]) -> int:

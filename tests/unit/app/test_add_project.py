@@ -182,8 +182,13 @@ async def test_execute_backward_mode_reports_critical_path():
 
 
 @pytest.mark.asyncio
-async def test_execute_backward_mode_adds_two_working_day_buffer():
-    """Spec §7: backward mode presents the earliest real date + 2 working days."""
+async def test_execute_backward_mode_adds_one_working_day_buffer():
+    """Backward mode presents the earliest real date + a 1 working-day buffer.
+
+    The customer's target is 6 working days of work plus 1 day of slack, so a
+    two-day buffer would report 8 days against a 7-day promise
+    (docs/customer-update-2026-08.md §3).
+    """
     from planner.domain.calendar.rules import nth_working_day
 
     app_fake_repo = FakeRepo()
@@ -199,8 +204,8 @@ async def test_execute_backward_mode_adds_two_working_day_buffer():
     )
 
     # Two-task FS chain (8h each, cap 8 → 1 day each) → raw critical path is 2
-    # working days; the presented date adds a +2 working-day buffer (→ 4).
-    assert result.earliest_end == nth_working_day(CAL, TODAY, 4)
+    # working days; the presented date adds a +1 working-day buffer (→ 3).
+    assert result.earliest_end == nth_working_day(CAL, TODAY, 3)
 
 
 @pytest.mark.asyncio
