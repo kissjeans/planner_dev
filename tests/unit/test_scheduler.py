@@ -101,3 +101,32 @@ def test_on_job_error_logs_without_raising():
 
 async def _noop() -> None:
     pass
+
+
+@pytest.mark.asyncio
+async def test_daily_summary_can_be_switched_off():
+    """The team asked to mute the 10:00 load digest while the bot is reworked.
+
+    Only the digest goes away — the calendar refresh must keep running.
+    """
+    sched = _FakeScheduler()
+    deps = SchedulerDeps(
+        send_daily_summary=_noop,
+        refresh_calendar_snapshot=_noop,
+        timezone="Europe/Moscow",
+        daily_summary_enabled=False,
+    )
+
+    register_jobs(sched, deps)
+
+    assert [j["id"] for j in sched.jobs] == ["refresh_calendar_snapshot"]
+
+
+@pytest.mark.asyncio
+async def test_daily_summary_is_on_by_default():
+    sched = _FakeScheduler()
+    deps = SchedulerDeps(send_daily_summary=_noop, refresh_calendar_snapshot=_noop)
+
+    register_jobs(sched, deps)
+
+    assert "daily_load_summary" in {j["id"] for j in sched.jobs}

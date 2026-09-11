@@ -12,6 +12,8 @@ class SchedulerDeps:
     send_daily_summary: Callable[[], Awaitable[None]]
     refresh_calendar_snapshot: Callable[[], Awaitable[None]]
     timezone: str = "Europe/Moscow"
+    daily_summary_enabled: bool = True
+    """Off mutes the 10:00 load digest; the bot still answers on demand."""
 
 
 def _on_job_error(event: Any) -> None:
@@ -28,16 +30,17 @@ def register_jobs(scheduler: Any, deps: SchedulerDeps) -> None:
     from apscheduler.events import EVENT_JOB_ERROR
     from apscheduler.triggers.cron import CronTrigger
 
-    scheduler.add_job(
-        deps.send_daily_summary,
-        CronTrigger(
-            day_of_week="mon-fri", hour=10, minute=0, timezone=deps.timezone
-        ),
-        id="daily_load_summary",
-        replace_existing=True,
-        misfire_grace_time=3600,
-        coalesce=True,
-    )
+    if deps.daily_summary_enabled:
+        scheduler.add_job(
+            deps.send_daily_summary,
+            CronTrigger(
+                day_of_week="mon-fri", hour=10, minute=0, timezone=deps.timezone
+            ),
+            id="daily_load_summary",
+            replace_existing=True,
+            misfire_grace_time=3600,
+            coalesce=True,
+        )
     scheduler.add_job(
         deps.refresh_calendar_snapshot,
         CronTrigger(month=1, day=1, timezone=deps.timezone),

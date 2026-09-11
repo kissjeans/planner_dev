@@ -54,6 +54,7 @@ async def main() -> None:
         notion="on"
         if settings.notion_token and settings.notion_database_id
         else "off",
+        daily_summary="on" if settings.daily_summary_enabled else "off",
     )
 
     engine = create_engine(settings.database_url)
@@ -104,6 +105,7 @@ async def main() -> None:
             send_daily_summary=_daily_summary,
             refresh_calendar_snapshot=_refresh_calendar,
             timezone=settings.timezone,
+            daily_summary_enabled=settings.daily_summary_enabled,
         ),
     )
     try:

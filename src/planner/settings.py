@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     debug: bool = False
     """Debug mode flag"""
 
+    daily_summary_enabled: bool = True
+    """Post the 10:00 team-load digest to the team chat.
+
+    Off mutes only that scheduled message — the bot still answers /load and
+    every other command on demand."""
+
     @property
     def admin_id_set(self) -> set[int]:
         return {int(x) for x in self.admin_ids.split(",") if x.strip()}
